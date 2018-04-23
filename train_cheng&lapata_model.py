@@ -18,7 +18,8 @@ def check_dir(path):
     if dirname != "" and not os.path.exists(dirname):
         os.makedirs(dirname)
 
-def make_dataset(input_path, label_path, tok2idx, batch_size, gpu):
+def make_dataset(input_path, label_path, tok2idx, batch_size, gpu,
+                 sent_limit=500):
 
     inputs = []
     sent_lengths = []
@@ -37,10 +38,10 @@ def make_dataset(input_path, label_path, tok2idx, batch_size, gpu):
             assert example["id"] == labels["id"]
             texts.append([inp["text"] for inp in example["inputs"]])
             ids.append(example["id"])
-            targets.append(labels["labels"])
+            targets.append(labels["labels"][:sent_limit])
             tokens = []
             sent_length = [] 
-            for sent in example["inputs"]:
+            for sent in example["inputs"][:sent_limit]:
                 sent_length.append(len(sent["tokens"]))
                 for token in sent["tokens"]:
                     tokens.append(tok2idx.get(token, 1)) 
@@ -231,6 +232,7 @@ def main():
     parser.add_argument("--gpu", default=-1, type=int)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--weighted", default=False, action="store_true")
+    parser.add_argument("--sent-limit", default=500, type=int)
     parser.add_argument("--teacher-forcing", default=5, type=int)
 
     # Output File Locations
@@ -317,12 +319,14 @@ def main():
     train_data = make_dataset(
         args.train_inputs, args.train_labels, tok2idx, 
         batch_size=args.batch_size,
-        gpu=args.gpu)
+        gpu=args.gpu,
+        sent_limit=args.sent_limit)
 
     valid_data = make_dataset(
         args.valid_inputs, args.valid_labels, tok2idx, 
         batch_size=args.batch_size,
-        gpu=args.gpu)
+        gpu=args.gpu,
+        sent_limit=args.sent_limit)
 
     model = cheng_and_lapata_extractor_model(
         embeddings,
