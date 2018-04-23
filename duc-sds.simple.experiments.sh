@@ -1,14 +1,14 @@
-DATA=$1/cnn-dailymail
+DATA=$1/duc-sds
 GPU=$2
 GLOVE=$1/glove
 
-INPUTS_TRAIN=$DATA/inputs/cnn.dm.spacy.input.train.json
-INPUTS_VALID=$DATA/inputs/cnn.dm.spacy.input.valid.json
-INPUTS_TEST=$DATA/inputs/cnn.dm.spacy.input.test.json
+INPUTS_TRAIN=$DATA/inputs/duc-sds.inputs.train.json
+INPUTS_VALID=$DATA/inputs/duc-sds.inputs.valid.json
+INPUTS_TEST=$DATA/inputs/duc-sds.inputs.test.json
 
-LABELS_TRAIN=$DATA/labels/cnn.dm.lim50.labels.train.json
-LABELS_VALID=$DATA/labels/cnn.dm.lim50.labels.valid.json
-LABELS_TEST=$DATA/labels/cnn.dm.lim50.labels.test.json
+LABELS_TRAIN=$DATA/labels/duc-sds.labels.train.json
+LABELS_VALID=$DATA/labels/duc-sds.labels.valid.json
+LABELS_TEST=$DATA/labels/duc-sds.labels.test.json
 
 SUMS_VALID=$DATA/human-abstracts/valid
 
@@ -19,7 +19,7 @@ MODELSDIR=${DATA}/models
 
 
 SEEDS="3423452 8747842 2347283 7234821 5247881"
-EMB_SIZES="50" # 100 200 300"
+EMB_SIZES="50 100 200 300"
 EMB_SIZES="200"
 
 for SEED in $SEEDS
@@ -43,8 +43,7 @@ do
       --weighted \
       --batch-size 32 \
       --gpu $GPU \
-      --epochs 20 \
-      --sent-limit 50 \
+      --epochs 50 \
       --pretrained-embeddings ${GLOVE}/glove.6B.${EMB_SIZE}d.txt \
       --fix-embeddings \
       --embedding-dropout .25 \
@@ -74,8 +73,7 @@ do
       --weighted \
       --batch-size 32 \
       --gpu $GPU \
-      --epochs 20 \
-      --sent-limit 50 \
+      --epochs 50 \
       --pretrained-embeddings ${GLOVE}/glove.6B.${EMB_SIZE}d.txt \
       --embedding-dropout .25 \
       --embedding-size ${EMB_SIZE} \
@@ -114,8 +112,7 @@ do
       --weighted \
       --batch-size 32 \
       --gpu $GPU \
-      --epochs 20 \
-      --sent-limit 50 \
+      --epochs 50 \
       --pretrained-embeddings ${GLOVE}/glove.6B.${EMB_SIZE}d.txt \
       --fix-embeddings \
       --embedding-dropout .25 \
@@ -147,8 +144,7 @@ do
       --weighted \
       --batch-size 32 \
       --gpu $GPU \
-      --epochs 20 \
-      --sent-limit 50 \
+      --epochs 50 \
       --pretrained-embeddings ${GLOVE}/glove.6B.${EMB_SIZE}d.txt \
       --embedding-dropout .25 \
       --embedding-size ${EMB_SIZE} \

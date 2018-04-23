@@ -1,25 +1,24 @@
+DATA=$1/duc-sds
+GPU=$2
+GLOVE=$1/glove
 
-DATA=$1
+INPUTS_TRAIN=$DATA/inputs/duc-sds.inputs.train.json
+INPUTS_VALID=$DATA/inputs/duc-sds.inputs.valid.json
+INPUTS_TEST=$DATA/inputs/duc-sds.inputs.test.json
 
-GLOVE=$DATA/glove
-DUC=$DATA/duc-sds
-INPUTS_TRAIN=$DUC/inputs/duc-sds.inputs.train.json
-INPUTS_VALID=$DUC/inputs/duc-sds.inputs.valid.json
-INPUTS_TEST=$DUC/inputs/duc-sds.inputs.test.json
+LABELS_TRAIN=$DATA/labels/duc-sds.labels.train.json
+LABELS_VALID=$DATA/labels/duc-sds.labels.valid.json
+LABELS_TEST=$DATA/labels/duc-sds.labels.test.json
 
-LABELS_TRAIN=$DUC/labels/duc-sds.labels.train.json
-LABELS_VALID=$DUC/labels/duc-sds.labels.valid.json
-LABELS_TEST=$DUC/labels/duc-sds.labels.test.json
+SUMS_VALID=$DATA/human-abstracts/valid
 
-SUMS_VALID=$DUC/human-abstracts/valid
-
-VOCABDIR=${DATA}/duc-sds/vocab
-RESULTSDIR=${DATA}/duc-sds/results
-MODELSDIR=${DATA}/duc-sds/models
-
+VOCABDIR=${DATA}/vocab
+RESULTSDIR=${DATA}/results
+MODELSDIR=${DATA}/models
 
 SEEDS="3423452 8747842 2347283 7234821 5247881"
 EMB_SIZES="50 100 200 300"
+EMB_SIZES="200"
 
 for SEED in $SEEDS
 do
@@ -27,9 +26,9 @@ do
   do
 
     echo "$SEED $EMB_SIZE"
-    VOCAB="${VOCABDIR}/${SEED}.${EMB_SIZE}d.fixed.cnn.simple.ext.vocab.json"
-    RESULTS_PATH="${RESULTSDIR}/${SEED}.${EMB_SIZE}d.fixed.cnn.simple.ext.results.json"
-    MODEL_PATH="${MODELSDIR}/${SEED}.${EMB_SIZE}d.fixed.cnn.simple.ext.model.bin"
+    VOCAB="${VOCABDIR}/${SEED}.${EMB_SIZE}d.fixed.cnn.c&l.vocab.json"
+    RESULTS="${RESULTSDIR}/${SEED}.${EMB_SIZE}d.fixed.cnn.c&l.results.json"
+    MODEL="${MODELSDIR}/${SEED}.${EMB_SIZE}d.fixed.cnn.c&l.bin"
     python "train_cheng&lapata_model.py" \
       --train-inputs $INPUTS_TRAIN \
       --train-labels $LABELS_TRAIN \
@@ -37,11 +36,11 @@ do
       --valid-labels $LABELS_VALID \
       --valid-summary-dir $SUMS_VALID \
       --vocab ${VOCAB} \
-      --results-path ${RESULTS_PATH} \
-      --model-path ${MODEL_PATH} \
+      --results-path ${RESULTS} \
+      --model-path ${MODEL} \
       --weighted \
       --batch-size 32 \
-      --gpu 1 \
+      --gpu $GPU \
       --epochs 50 \
       --teacher-forcing 25 \
       --pretrained-embeddings ${GLOVE}/glove.6B.${EMB_SIZE}d.txt \
@@ -59,9 +58,9 @@ do
       --seed $SEED 
  
     echo "$SEED $EMB_SIZE"
-    VOCAB="${VOCABDIR}/${SEED}.${EMB_SIZE}d.learned.cnn.simple.ext.vocab.json"
-    RESULTS_PATH="${RESULTSDIR}/${SEED}.${EMB_SIZE}d.learned.cnn.simple.ext.results.json"
-    MODEL_PATH="${MODELSDIR}/${SEED}.${EMB_SIZE}d.learned.cnn.simple.ext.model.bin"
+    VOCAB="${VOCABDIR}/${SEED}.${EMB_SIZE}d.learned.cnn.c&l.vocab.json"
+    RESULTS="${RESULTSDIR}/${SEED}.${EMB_SIZE}d.learned.cnn.c&l.results.json"
+    MODEL="${MODELSDIR}/${SEED}.${EMB_SIZE}d.learned.cnn.c&l.bin"
     python "train_cheng&lapata_model.py" \
       --train-inputs $INPUTS_TRAIN \
       --train-labels $LABELS_TRAIN \
@@ -69,11 +68,11 @@ do
       --valid-labels $LABELS_VALID \
       --valid-summary-dir $SUMS_VALID \
       --vocab ${VOCAB} \
-      --results-path ${RESULTS_PATH} \
-      --model-path ${MODEL_PATH} \
+      --results-path ${RESULTS} \
+      --model-path ${MODEL} \
       --weighted \
       --batch-size 32 \
-      --gpu 1 \
+      --gpu $GPU \
       --epochs 50 \
       --teacher-forcing 25 \
       --pretrained-embeddings ${GLOVE}/glove.6B.${EMB_SIZE}d.txt \
@@ -91,9 +90,9 @@ do
       --seed $SEED 
  
     echo "$SEED $EMB_SIZE"
-    VOCAB="${VOCABDIR}/${SEED}.${EMB_SIZE}d.fixed.avg.c&l.ext.vocab.json"
-    RESULTS_PATH="${RESULTSDIR}/${SEED}.${EMB_SIZE}d.fixed.avg.c&l.ext.results.json"
-    MODEL_PATH="${MODELSDIR}/${SEED}.${EMB_SIZE}d.fixed.avg.c&l.ext.model.bin"
+    VOCAB="${VOCABDIR}/${SEED}.${EMB_SIZE}d.fixed.avg.c&l.vocab.json"
+    RESULTS="${RESULTSDIR}/${SEED}.${EMB_SIZE}d.fixed.avg.c&l.results.json"
+    MODEL="${MODELSDIR}/${SEED}.${EMB_SIZE}d.fixed.avg.c&l.bin"
     python "train_cheng&lapata_model.py" \
       --train-inputs $INPUTS_TRAIN \
       --train-labels $LABELS_TRAIN \
@@ -101,11 +100,11 @@ do
       --valid-labels $LABELS_VALID \
       --valid-summary-dir $SUMS_VALID \
       --vocab ${VOCAB} \
-      --results-path ${RESULTS_PATH} \
-      --model-path ${MODEL_PATH} \
+      --results-path ${RESULTS} \
+      --model-path ${MODEL} \
       --weighted \
       --batch-size 32 \
-      --gpu 1 \
+      --gpu $GPU \
       --epochs 50 \
       --teacher-forcing 25 \
       --pretrained-embeddings ${GLOVE}/glove.6B.${EMB_SIZE}d.txt \
@@ -121,9 +120,9 @@ do
       --seed $SEED 
 
     echo "$SEED $EMB_SIZE"
-    VOCAB="${VOCABDIR}/${SEED}.${EMB_SIZE}d.learned.avg.c&l.ext.vocab.json"
-    RESULTS_PATH="${RESULTSDIR}/${SEED}.${EMB_SIZE}d.learned.avg.c&l.ext.results.json"
-    MODEL_PATH="${MODELSDIR}/${SEED}.${EMB_SIZE}d.learned.avg.c&l.ext.model.bin"
+    VOCAB="${VOCABDIR}/${SEED}.${EMB_SIZE}d.learned.avg.c&l.vocab.json"
+    RESULTS="${RESULTSDIR}/${SEED}.${EMB_SIZE}d.learned.avg.c&l.results.json"
+    MODEL="${MODELSDIR}/${SEED}.${EMB_SIZE}d.learned.avg.c&l.bin"
     python "train_cheng&lapata_model.py" \
       --train-inputs $INPUTS_TRAIN \
       --train-labels $LABELS_TRAIN \
@@ -135,7 +134,7 @@ do
       --model-path ${MODEL_PATH} \
       --weighted \
       --batch-size 32 \
-      --gpu 1 \
+      --gpu $GPU \
       --epochs 50 \
       --teacher-forcing 25 \
       --pretrained-embeddings ${GLOVE}/glove.6B.${EMB_SIZE}d.txt \
