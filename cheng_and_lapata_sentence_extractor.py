@@ -3,12 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class ChenAndLapataSentenceExtractor(nn.Module):
+class ChengAndLapataSentenceExtractor(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=1, 
                  cell="GRU", rnn_dropout=0.0,
                  mlp_layers=[100], mlp_dropouts=[.25]):
 
-        super(ChenAndLapataSentenceExtractor, self).__init__()
+        super(ChengAndLapataSentenceExtractor, self).__init__()
         if cell not in ["GRU", "LSTM", "RNN"]:
             raise Exception(("cell expected one of 'GRU', 'LSTM', or 'RNN' "
                              "but got {}").format(cell))

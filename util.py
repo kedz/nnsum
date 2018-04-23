@@ -53,7 +53,8 @@ def fill_embeddings(src_tok2idx, src_emb, tgt_idx2tok, tgt_emb):
     print("Filled {}/{} embeddings.".format(found, tgt_emb.size(0) - 2))
 
 def initialize_vocab_and_embeddings(inputs_path, embedding_size, dropout=0.0,
-                                    trainable=True, embeddings_path=None):
+                                    trainable=True, embeddings_path=None,
+                                    at_least=3):
     if embeddings_path:
         print("Reading embeddings file {} ...".format(
             embeddings_path))
@@ -61,7 +62,7 @@ def initialize_vocab_and_embeddings(inputs_path, embedding_size, dropout=0.0,
             embeddings_path) 
         
         if trainable:
-            tok2idx, idx2tok = read_vocab(inputs_path)
+            tok2idx, idx2tok = read_vocab(inputs_path, at_least=at_least)
             init_embeddings = torch.FloatTensor(len(idx2tok), embedding_size)
             init_embeddings.normal_()
             init_embeddings[0].fill_(0)
@@ -74,7 +75,7 @@ def initialize_vocab_and_embeddings(inputs_path, embedding_size, dropout=0.0,
             init_embeddings = pt_embeddings
 
     else:
-        tok2idx, idx2tok = read_vocab(inputs_path)
+        tok2idx, idx2tok = read_vocab(inputs_path, at_least=at_least)
         init_embeddings = None
 
     embeddings = EmbeddingLayer(

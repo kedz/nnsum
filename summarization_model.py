@@ -32,28 +32,28 @@ class SummarizationModel(nn.Module):
         return Variable(tokens)
     
 
-    def sort_sentences_(self, original_input, original_word_counts):
-        print(original_input)
-        print(original_word_counts)
-        
-        bs = original_input.size(0)
-        ds = original_input.size(1)
-        ss = original_input.size(2)
-
-        og_input_flat = original_input.view(bs * ds, ss)
-        og_wc_flat = original_word_counts.view(-1)
-
-        srt_wc_flat, argsrt_wc_flat = torch.sort(
-            og_wc_flat, descending=True)
-
-
-        exit()
-
-        sorted_wc, argsort_wc = torch.sort(
-            original_word_counts, 1, descending=True))
-        print(sorted_wc)
-        print(argsort_wc)
-        exit()
+#    def sort_sentences_(self, original_input, original_word_counts):
+#        print(original_input)
+#        print(original_word_counts)
+#        
+#        bs = original_input.size(0)
+#        ds = original_input.size(1)
+#        ss = original_input.size(2)
+#
+#        og_input_flat = original_input.view(bs * ds, ss)
+#        og_wc_flat = original_word_counts.view(-1)
+#
+#        srt_wc_flat, argsrt_wc_flat = torch.sort(
+#            og_wc_flat, descending=True)
+#
+#
+#        exit()
+#
+#        sorted_wc, argsort_wc = torch.sort(
+#            original_word_counts, 1, descending=True))
+#        print(sorted_wc)
+#        print(argsort_wc)
+#        exit()
 
     def forward(self, inputs, decoder_supervision=None, mask_logits=False):
 

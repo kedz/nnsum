@@ -26,10 +26,16 @@ class DocumentRNNEncoder(nn.Module):
             self.size_ = hidden_size * 2
         else:
             self.size_ = hidden_size
+         
+        self.dropout_ = dropout
 
     @property
     def size(self):
         return self.size_
+
+    @property
+    def dropout(self):
+        return self.dropout_
 
     def forward(self, inputs, length):
         packed_input = nn.utils.rnn.pack_padded_sequence(
@@ -37,4 +43,5 @@ class DocumentRNNEncoder(nn.Module):
         packed_output, encoder_state = self.rnn(packed_input)
         output, _ = nn.utils.rnn.pad_packed_sequence(
             packed_output, batch_first=True)
+        output = F.dropout(output, p=self.dropout, training=self.training)
         return output, encoder_state
