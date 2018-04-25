@@ -95,7 +95,7 @@ def make_dataset(input_path, label_path, tok2idx, batch_size, gpu, sent_limit=50
         shuffle=True)
     return dataset
 
-def train(optimizer, model, dataset, weight=None, grad_clip=5):
+def train(optimizer, model, dataset, weight=None, grad_clip=5, tts=True):
     model.train()
     total_xent = 0
     total_els = 0
@@ -126,15 +126,19 @@ def train(optimizer, model, dataset, weight=None, grad_clip=5):
         total_xent += bce.data[0]
         total_els += total_sentences_batch
 
-        sys.stdout.write(
-            "train: {}/{} XENT={:0.6f}\r".format(
-                n_iter, max_iters, total_xent / total_els))
-        sys.stdout.flush()
+        if tts:
+            sys.stdout.write(
+                "train: {}/{} XENT={:0.6f}\r".format(
+                    n_iter, max_iters, total_xent / total_els))
+            sys.stdout.flush()
+        elif n_iter % 500 == 0:
+            sys.stdout.write(".")
+            sys.stdout.flush()
 
     return total_xent / total_els
 
 def validate(model, dataset, summary_dir, weight=None, remove_stopwords=True, 
-             summary_length=100):
+             summary_length=100, tts=True):
     model.eval()
     total_xent = 0
     total_els = 0
@@ -160,10 +164,14 @@ def validate(model, dataset, summary_dir, weight=None, remove_stopwords=True,
         total_xent += bce.data[0]
         total_els += total_sentences_batch
 
-        sys.stdout.write(
-            "valid: {}/{} XENT={:0.6f}\r".format(
-                n_iter, max_iters, total_xent / total_els))
-        sys.stdout.flush()
+        if tts:
+            sys.stdout.write(
+                "valid: {}/{} XENT={:0.6f}\r".format(
+                    n_iter, max_iters, total_xent / total_els))
+            sys.stdout.flush()
+        elif n_iter % 500 == 0:
+            sys.stdout.write(".")
+            sys.stdout.flush()
 
     rouge_df, hist = compute_rouge(
         model, dataset, summary_dir, remove_stopwords=remove_stopwords,
@@ -237,6 +245,8 @@ def main():
     parser.add_argument("--vocab", type=str, required=True)
     parser.add_argument("--results-path", type=str, default=None)
     parser.add_argument("--model-path", type=str, default=None)
+
+    parser.add_argument("--no-tts", action="store_true", default=False)
 
     # Word Embedding Parameters
     parser.add_argument("--embedding-size", default=50, type=int)
@@ -385,14 +395,16 @@ def main():
         
 #        if args.shuffle_doc:
 #            training_data = shuffle_data(training_data)
-        train_xent = train(optim, model, train_data, weight=weight)
+        train_xent = train(optim, model, train_data, weight=weight,
+                           tts=not args.no_tts)
         train_xents.append(train_xent)
         
         valid_result = validate(
             model, valid_data, args.valid_summary_dir, 
             weight=weight,
             remove_stopwords=args.remove_stopwords, 
-            summary_length=args.summary_length)
+            summary_length=args.summary_length,
+            tts=not args.no_tts)
         valid_results.append(valid_result)
         print(("Epoch {} :: Train xent: {:0.3f} | Valid xent: {:0.3f} | " \
                "R1: {:0.3f} | R2: {:0.3f}").format(
