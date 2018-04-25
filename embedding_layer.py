@@ -35,10 +35,14 @@ class EmbeddingLayer(nn.Module):
                 yield n, p
 
     def forward(self, inputs):
-        bs = inputs.size(0)
-        ss = inputs.size(1)
-        ts = inputs.size(2)
-        emb = self.embeddings(inputs.view(bs * ss, ts)).view(bs, ss, ts, -1)
+        if inputs.dim() == 2:
+            emb = self.embeddings(inputs)
+        else:
+            bs = inputs.size(0)
+            ss = inputs.size(1)
+            ts = inputs.size(2)
+            inputs_flat = inputs.view(bs * ss, ts)
+            emb = self.embeddings(inputs_flat).view(bs, ss, ts, -1)
         emb = F.dropout(emb, p=self.dropout_, training=self.training)
         return emb
 

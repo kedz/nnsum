@@ -13,11 +13,11 @@ class SentenceAveragingEncoder(nn.Module):
     def size(self):
         return self.output_size_
 
-    def forward(self, inputs, input_data):
+    def forward(self, inputs, word_count, input_data):
         inputs_sum = inputs.sum(2)
-        word_counts = input_data.word_count.float().masked_fill(
-            input_data.word_count.eq(0), 1).unsqueeze(2)
-        inputs_mean = inputs_sum / word_counts
+        word_count = word_count.float().masked_fill(
+            word_count.eq(0), 1).unsqueeze(2)
+        inputs_mean = inputs_sum / word_count
         return inputs_mean
 
     @property

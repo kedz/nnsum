@@ -18,7 +18,8 @@ def check_dir(path):
     if dirname != "" and not os.path.exists(dirname):
         os.makedirs(dirname)
 
-def make_dataset(input_path, label_path, tok2idx, batch_size, gpu, sent_limit=500):
+def make_dataset(input_path, label_path, tok2idx, batch_size, gpu, 
+                 sent_limit=500):
 
     inputs = []
     sent_lengths = []
@@ -268,6 +269,10 @@ def main():
     parser.add_argument(
         "--sent-feature-maps", default=[25, 25, 50, 50, 50, 50], 
         type=int, nargs="+")
+    parser.add_argument(
+        "--sent-rnn-hidden-size", default=100, type=int)
+    parser.add_argument(
+        "--sent-rnn-bidirectional", action="store_true", default=False)
 
     # Document Encoder Parameters
     parser.add_argument(
@@ -342,6 +347,8 @@ def main():
         sent_encoder_type=args.sent_encoder,
         sent_filter_windows=args.sent_filter_windows,
         sent_feature_maps=args.sent_feature_maps,
+        sent_rnn_hidden_size=args.sent_rnn_hidden_size,
+        sent_rnn_bidirectional=args.sent_rnn_bidirectional,
         doc_rnn_hidden_size=args.doc_rnn_hidden_size,
         doc_rnn_bidirectional=args.doc_rnn_bidirectional,
         doc_rnn_dropout=args.doc_rnn_dropout,

@@ -5,28 +5,32 @@ import torch.nn.functional as F
 
 class SentenceRNNEncoder(nn.Module):
     def __init__(self, input_size, hidden_size, dropout=0.0, 
-                 bidirectional=True, cell="gru"):
+                 bidirectional=True, cell="gru", num_layers=1):
         super(SentenceRNNEncoder, self).__init__()
+        print(hidden_size, dropout, bidirectional, cell, num_layers)
 
-        if cell not in ["GRU", "LSTM", "RNN"]:
-            raise Exception(("cell expected one of 'GRU', 'LSTM', or 'RNN' "
+        if cell not in ["gru", "lstm", "rnn"]:
+            raise Exception(("cell expected one of 'gru', 'lstm', or 'rnn' "
                              "but got {}").format(cell))
 
-        num_layers = 1
-        if cell == "GRU":
+        if cell == "gru":
             self.rnn = nn.GRU(input_size, hidden_size, num_layers=num_layers,
                               bidirectional=bidirectional, dropout=dropout)
-        elif cell == "LSTM":
+        elif cell == "lstm":
             self.rnn = nn.LSTM(input_size, hidden_size, num_layers=num_layers,
                                bidirectional=bidirectional, dropout=dropout)
         else:
             self.rnn = nn.RNN(input_size, hidden_size, num_layers=num_layers,
                               bidirectional=bidirectional, dropout=dropout)
 
+        self.bidirectional_ = bidirectional
+
         if bidirectional:
             self.size_ = hidden_size * 2
         else:
             self.size_ = hidden_size
+
+        self.dropout_ = dropout
 
     @property
     def size(self):
@@ -36,8 +40,33 @@ class SentenceRNNEncoder(nn.Module):
     def needs_sorted_sentences(self):
         return True
 
+    @property
+    def dropout(self):
+        return self.dropout_
+    
+    @property
+    def bidirectional(self):
+        return self.bidirectional_
 
-    def forward(self, inputs, input_data):
+    def forward(self, inputs, word_count, input_data):
 
-        print(inputs)
-        exit()
+        packed_input = nn.utils.rnn.pack_padded_sequence(
+            inputs, word_count.data.tolist(), batch_first=True)
+        packed_output, encoder_state = self.rnn(packed_input)
+        output, _ = nn.utils.rnn.pad_packed_sequence(
+            packed_output, batch_first=True)
+        if isinstance(encoder_state, tuple):
+            encoder_state = encoder_state[0]
+
+        if self.bidirectional:
+            encoder_state = encoder_state[-2:].permute(1, 0, 2).contiguous()
+            bs = encoder_state.size(0)
+            encoder_state = encoder_state.view(bs, -1)
+        else:
+            encoder_state = encoder_state[-1:].permute(1, 0, 2).contiguous()
+            bs = encoder_state.size(0)
+            encoder_state = encoder_state.view(bs, -1)
+
+        encoder_state = F.dropout(
+            encoder_state, p=self.dropout, training=self.training)
+        return encoder_state

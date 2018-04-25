@@ -18,7 +18,7 @@ class SentenceCNNEncoder(nn.Module):
     def size(self):
         return self.output_size_
 
-    def forward(self, inputs, input_data):
+    def forward(self, inputs, word_count, input_data):
         inputs = inputs.unsqueeze(1)
         feature_maps = []
         for filter in self.filters:

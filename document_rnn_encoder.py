@@ -5,17 +5,17 @@ import torch.nn.functional as F
 
 class DocumentRNNEncoder(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=1, 
-                 bidirectional=False, cell="GRU", dropout=0.0):
+                 bidirectional=False, cell="gru", dropout=0.0):
 
         super(DocumentRNNEncoder, self).__init__()
 
-        if cell not in ["GRU", "LSTM", "RNN"]:
-            raise Exception(("cell expected one of 'GRU', 'LSTM', or 'RNN' "
+        if cell not in ["gru", "lstm", "rnn"]:
+            raise Exception(("cell expected one of 'gru', 'lstm', or 'rnn' "
                              "but got {}").format(cell))
-        if cell == "GRU":
+        if cell == "gru":
             self.rnn = nn.GRU(input_size, hidden_size, num_layers=num_layers,
                               bidirectional=bidirectional, dropout=dropout)
-        elif cell == "LSTM":
+        elif cell == "lstm":
             self.rnn = nn.LSTM(input_size, hidden_size, num_layers=num_layers,
                                bidirectional=bidirectional, dropout=dropout)
         else:

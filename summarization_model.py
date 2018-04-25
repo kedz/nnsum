@@ -32,53 +32,62 @@ class SummarizationModel(nn.Module):
         return Variable(tokens)
     
 
-#    def sort_sentences_(self, original_input, original_word_counts):
-#        print(original_input)
-#        print(original_word_counts)
-#        
-#        bs = original_input.size(0)
-#        ds = original_input.size(1)
-#        ss = original_input.size(2)
-#
-#        og_input_flat = original_input.view(bs * ds, ss)
-#        og_wc_flat = original_word_counts.view(-1)
-#
-#        srt_wc_flat, argsrt_wc_flat = torch.sort(
-#            og_wc_flat, descending=True)
-#
-#
-#        exit()
-#
-#        sorted_wc, argsort_wc = torch.sort(
-#            original_word_counts, 1, descending=True))
-#        print(sorted_wc)
-#        print(argsort_wc)
-#        exit()
+    def sort_sentences_(self, og_input, og_wc):
+
+        bs = og_input.size(0)
+        ds = og_input.size(1)
+        ss = og_input.size(2)
+        
+        og_input_flat = og_input.contiguous().view(bs * ds, ss)
+        og_wc_flat = og_wc.contiguous().view(-1)
+        
+        srt_wc_flat, argsrt_wc_flat = torch.sort(og_wc_flat, descending=True)
+        
+        srt_input_flat = og_input_flat[argsrt_wc_flat]
+        
+        _, inv_order = torch.sort(argsrt_wc_flat)
+
+        srt_wc = Variable(
+            srt_wc_flat.data.masked_fill_(srt_wc_flat.data.eq(0), 1))
+        srt_inp = Variable(srt_input_flat.data)
+        inv_order = Variable(inv_order.data)
+        return srt_inp, srt_wc, inv_order
 
     def forward(self, inputs, decoder_supervision=None, mask_logits=False):
 
-        batch_sentences_tokens = self.prepare_input_(inputs)
+        tokens = self.prepare_input_(inputs)
+        batch_size, doc_size, sent_size = tokens.size()
 
         if self.sentence_encoder.needs_sorted_sentences:
-            self.sort_sentences_(batch_sentences_tokens, inputs.word_count) 
+            tokens_srt, word_count_srt, inv_order = self.sort_sentences_(
+                tokens, inputs.word_count) 
+            token_embeddings_srt = self.embeddings(tokens_srt)
+            sentence_embeddings_srt = self.sentence_encoder(
+                token_embeddings_srt, word_count_srt, inputs)
 
+            sentence_embeddings_flat = sentence_embeddings_srt[inv_order]
+            sentence_embeddings = sentence_embeddings_flat.view(
+                batch_size, doc_size, -1)
 
-        batch_sentence_token_embeddings = self.embeddings(
-            batch_sentences_tokens)
+            mask = tokens.data[:,:,:1].eq(0).repeat(
+                1, 1, sentence_embeddings.size(2))
+            sentence_embeddings.data.masked_fill_(mask, 0)
 
-        batch_sentence_embeddings = self.sentence_encoder(
-            batch_sentence_token_embeddings, inputs)
+        else:
+            token_embeddings = self.embeddings(tokens)
+            sentence_embeddings = self.sentence_encoder(
+                token_embeddings, inputs.word_count, inputs)
 
         encoder_output, encoder_state = self.document_encoder(
-            batch_sentence_embeddings, inputs.sentence_counts)
+            sentence_embeddings, inputs.sentence_counts)
 
         logits = self.document_decoder(
-            batch_sentence_embeddings, inputs.sentence_counts, 
+            sentence_embeddings, inputs.sentence_counts, 
             encoder_output, encoder_state,
             targets=decoder_supervision)
 
         if mask_logits:
-            mask = batch_sentences_tokens.data[:,:,0].eq(0)
+            mask = tokens.data[:,:,0].eq(0)
             logits.data.masked_fill_(mask, float("-inf"))
 
         return logits 
