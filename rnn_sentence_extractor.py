@@ -6,26 +6,26 @@ from attention import NoAttention, DotAttention
 
 class RNNSentenceExtractor(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=1, 
-                 cell="GRU", rnn_dropout=0.0,
+                 cell="gru", rnn_dropout=0.0, bidirectional=False,
                  mlp_layers=[100], mlp_dropouts=[.25],
                  attention="dot"):
 
         super(RNNSentenceExtractor, self).__init__()
-        if cell not in ["GRU", "LSTM", "RNN"]:
-            raise Exception(("cell expected one of 'GRU', 'LSTM', or 'RNN' "
+        if cell not in ["gru", "lstm", "rnn"]:
+            raise Exception(("cell expected one of 'gru', 'lstm', or 'rnn' "
                              "but got {}").format(cell))
-        if cell == "GRU":
+        if cell == "gru":
             self.rnn = nn.GRU(
                 input_size, hidden_size, num_layers=num_layers, 
-                dropout=rnn_dropout)
-        elif cell == "LSTM":
+                dropout=rnn_dropout, bidirectional=bidirectional)
+        elif cell == "lstm":
             self.rnn = nn.LSTM(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout)
+                dropout=rnn_dropout, bidirectional=bidirectional)
         else:
             self.rnn = nn.RNN(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout)
+                dropout=rnn_dropout, bidirectional=bidirectional)
         self.decoder_start = nn.Parameter(
             torch.FloatTensor(input_size).normal_())
 
@@ -39,6 +39,9 @@ class RNNSentenceExtractor(nn.Module):
         self.teacher_forcing = True
 
         inp_size = hidden_size
+        if bidirectional:
+            inp_size *= 2
+
         if attention is not None:
             inp_size *= 2
         mlp = []
