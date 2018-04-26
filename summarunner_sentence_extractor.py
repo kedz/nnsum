@@ -66,12 +66,12 @@ class SummaRunnerSentenceExtractor(nn.Module):
         logits = []
         summary_rep = Variable(
             sentence_states[0].data.new(sentence_states[0].size()).fill_(0))
+        static_logits = content_logits + salience_logits + pos_logits \
+            + seg_logits + self.bias.unsqueeze(0)
 
         for step in range(doc_size):
             novelty_logits = self.novelty_(sentence_states[step], summary_rep)
-            logits_step = content_logits[:, step] + salience_logits[:, step] \
-                + novelty_logits + pos_logits[:, step] + seg_logits[:, step] \
-                + self.bias
+            logits_step = static_logits[:, step] + novelty_logits
             
             prob = F.sigmoid(logits_step)
             
