@@ -5,18 +5,18 @@ import torch.nn.functional as F
 
 class ChengAndLapataSentenceExtractor(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=1, 
-                 cell="GRU", rnn_dropout=0.0,
+                 cell="gru", rnn_dropout=0.0,
                  mlp_layers=[100], mlp_dropouts=[.25]):
 
         super(ChengAndLapataSentenceExtractor, self).__init__()
-        if cell not in ["GRU", "LSTM", "RNN"]:
-            raise Exception(("cell expected one of 'GRU', 'LSTM', or 'RNN' "
+        if cell not in ["gru", "lstm", "rnn"]:
+            raise Exception(("cell expected one of 'gru', 'lstm', or 'rnn' "
                              "but got {}").format(cell))
-        if cell == "GRU":
+        if cell == "gru":
             self.rnn = nn.GRU(
                 input_size, hidden_size, num_layers=num_layers, 
                 dropout=rnn_dropout)
-        elif cell == "LSTM":
+        elif cell == "lstm":
             self.rnn = nn.LSTM(
                 input_size, hidden_size, num_layers=num_layers,
                 dropout=rnn_dropout)

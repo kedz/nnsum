@@ -70,15 +70,17 @@ def cheng_and_lapata_extractor_model(embedding_layer,
                                      sent_encoder_type="avg",
                                      sent_feature_maps=[25, 25, 25],
                                      sent_filter_windows=[1, 2, 3],
-                                     #sent_rnn_hidden_size=200,
-                                     doc_rnn_cell="GRU", 
+                                     sent_rnn_hidden_size=200,
+                                     sent_rnn_cell="gru",
+                                     sent_rnn_bidirectional=True,
+                                     sent_rnn_layers=1,
+                                     doc_rnn_cell="gru", 
                                      doc_rnn_hidden_size=150, 
                                      doc_rnn_bidirectional=False,
                                      doc_rnn_dropout=.25,
                                      doc_rnn_layers=1,
                                      mlp_layers=[100], 
                                      mlp_dropouts=[.25]):
-
 
     if sent_encoder_type == "avg":
          sentence_encoder = SentenceAveragingEncoder(
@@ -90,12 +92,14 @@ def cheng_and_lapata_extractor_model(embedding_layer,
              feature_maps=sent_feature_maps, 
              filter_windows=sent_filter_windows,
              dropout=sent_dropout)
-#    elif sentence_encoder == "rnn":
-#         sent_encoder = SentenceRNNEncoder(
-#             embedding_layer.size,
-#             sentence_rnn_hidden_size,
-#             dropout=sentence_dropout,
-#             cell=rnn_cell)
+    elif sent_encoder_type == "rnn":
+         sentence_encoder = SentenceRNNEncoder(
+             embedding_layer.size,
+             sent_rnn_hidden_size,
+             dropout=sent_dropout,
+             bidirectional=sent_rnn_bidirectional,
+             num_layers=sent_rnn_layers,
+             cell=sent_rnn_cell)
     else:
         raise Exception("sentence_encoder must be 'cnn' or 'avg'")
  
