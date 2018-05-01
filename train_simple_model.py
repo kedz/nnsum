@@ -18,8 +18,16 @@ def check_dir(path):
     if dirname != "" and not os.path.exists(dirname):
         os.makedirs(dirname)
 
+def filter_tokens(sentence, remove_pos):
+    if remove_pos is None:
+        return sentence["tokens"]
+    else:
+        tokens = [t if p not in remove_pos else "_UNK_" 
+                  for t, p in zip(sentence["tokens"], sentence["pos"])]
+        return tokens 
+
 def make_dataset(input_path, label_path, tok2idx, batch_size, gpu, 
-                 sent_limit=500):
+                 sent_limit=500, remove_pos=None):
 
     inputs = []
     sent_lengths = []
@@ -42,8 +50,9 @@ def make_dataset(input_path, label_path, tok2idx, batch_size, gpu,
             tokens = []
             sent_length = [] 
             for sent in example["inputs"][:sent_limit]:
-                sent_length.append(len(sent["tokens"]))
-                for token in sent["tokens"]:
+                filtered_tokens = filter_tokens(sent, remove_pos)
+                sent_length.append(len(filtered_tokens))
+                for token in filtered_tokens:
                     tokens.append(tok2idx.get(token, 1)) 
             inputs.append(tokens)
             sent_lengths.append(sent_length)
@@ -359,12 +368,16 @@ def main():
         "--summary-length", default=100, type=int)
     
     parser.add_argument("--shuffle-doc", default=False, action="store_true")
-#    parser.add_argument(
-#        "--sentence-extractor", default="c&l", 
-#        choices=["c&l", "simple", "rnn"])
-#    parser.add_argument("--attention", default=None, choices=["dot"])
+    parser.add_argument(
+        "--remove-pos", default=None, 
+        choices=["ADJ", "ADP", "ADV", "AUX", "CONJ", "CCONJ", "DET", "INTJ",
+                 "NOUN", "NUM", "PART", "PRON", "PROPN", "PUNCT",
+                 "SCONJ", "SYM", "VERB", "X"],              
+        nargs="+")
 
     args = parser.parse_args()
+    
+    remove_pos = set(args.remove_pos)
 
     if len(args.sent_feature_maps) != len(args.sent_filter_windows):
         print("--sent-feature-maps and --sent- filter-windows must have same "
@@ -397,13 +410,15 @@ def main():
         args.train_inputs, args.train_labels, tok2idx, 
         batch_size=args.batch_size,
         gpu=args.gpu,
-        sent_limit=args.sent_limit)
+        sent_limit=args.sent_limit,
+        remove_pos=remove_pos)
 
     valid_data = make_dataset(
         args.valid_inputs, args.valid_labels, tok2idx, 
         batch_size=args.batch_size,
         gpu=args.gpu,
-        sent_limit=args.sent_limit)
+        sent_limit=args.sent_limit,
+        remove_pos=remove_pos)
 
     model = simple_extractor_model(
         embeddings,
