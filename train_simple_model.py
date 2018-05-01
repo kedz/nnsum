@@ -96,6 +96,70 @@ def make_dataset(input_path, label_path, tok2idx, batch_size, gpu,
         shuffle=True)
     return dataset
 
+def shuffle_data(dataset):
+
+    shuf_tokens = dataset.inputs.tokens.new()
+    shuf_tokens.resize_(dataset.inputs.tokens.size()).fill_(0)
+    shuf_sentence_lengths = dataset.inputs.sentence_lengths.new()
+    shuf_sentence_lengths.resize_(dataset.inputs.sentence_lengths.size()).fill_(0)
+    shuf_targets = dataset.targets.new().resize_(dataset.targets.size()).fill_(-1)
+    shuf_texts = []
+    for i in range(shuf_tokens.size(0)):
+        doc_size = dataset.inputs.sentence_counts[i]
+        pos = 0
+        tokenized_sents = []
+        for sz in dataset.inputs.sentence_lengths[i,:doc_size]:
+            tokenized_sents.append(dataset.inputs.tokens[i,pos:pos+sz])
+            pos += sz
+
+        I = torch.randperm(doc_size)
+        shuf_sentence_lengths[i,:doc_size].copy_(
+            dataset.inputs.sentence_lengths[i,:doc_size][I])
+    
+        pos = 0
+        shuf_text = []
+        for j in I:
+            ts = tokenized_sents[j]
+            ts_sz = ts.size(0)
+            shuf_tokens[i,pos:pos + ts_sz].copy_(ts)
+            pos += ts_sz
+            shuf_text.append(dataset.metadata.text[i][j])
+
+        shuf_texts.append(shuf_text)
+
+        shuf_targets[i,:doc_size].copy_(dataset.targets[i,:doc_size][I])
+
+    layout = [
+        ["inputs", [
+            ["tokens", "tokens"],
+            ["token_counts", "num_tokens"],
+            ["sentence_lengths", "sent_lengths"],
+            ["word_count", "sent_lengths"],
+            ["sentence_counts", "num_sents"],]
+        ],
+        ["targets", "targets"],
+        ["metadata", [
+            ["id", "id"],
+            ["text","text"]]
+        ]
+    ]
+
+    shuf_dataset = Dataset(
+        (shuf_tokens, dataset.inputs.token_counts, "tokens"),
+        (dataset.inputs.token_counts, "num_tokens"),
+        (dataset.inputs.sentence_counts, "num_sents"),
+        (shuf_sentence_lengths, dataset.inputs.sentence_counts, "sent_lengths"),
+        (shuf_targets, dataset.inputs.sentence_counts, "targets"),
+        (dataset.metadata.id, "id"),
+        (shuf_texts, "text"),
+        batch_size=dataset.batch_size,
+        gpu=dataset.gpu,
+        lengths=dataset.inputs.sentence_counts,
+        layout=layout,
+        shuffle=True)
+
+    return shuf_dataset
+ 
 def train(optimizer, model, dataset, weight=None, grad_clip=5, tts=True):
     model.train()
     total_xent = 0
@@ -294,7 +358,7 @@ def main():
     parser.add_argument(
         "--summary-length", default=100, type=int)
     
-##    parser.add_argument("--shuffle-doc", default=False, action="store_true")
+    parser.add_argument("--shuffle-doc", default=False, action="store_true")
 #    parser.add_argument(
 #        "--sentence-extractor", default="c&l", 
 #        choices=["c&l", "simple", "rnn"])
@@ -400,8 +464,10 @@ def main():
     for epoch in range(1, args.epochs + 1):
         print("=== {:4d} ===".format(epoch))
         
-#        if args.shuffle_doc:
-#            training_data = shuffle_data(training_data)
+        if args.shuffle_doc:
+            print("shuffling...")
+            train_data = shuffle_data(train_data)
+
         train_xent = train(optim, model, train_data, weight=weight,
                            tts=not args.no_tts)
         train_xents.append(train_xent)
