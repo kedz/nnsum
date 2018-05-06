@@ -377,7 +377,10 @@ def main():
 
     args = parser.parse_args()
     
-    remove_pos = set(args.remove_pos)
+    if args.remove_pos is not None:
+        remove_pos = set(args.remove_pos)
+    else:
+        remove_pos = None
 
     if len(args.sent_feature_maps) != len(args.sent_filter_windows):
         print("--sent-feature-maps and --sent- filter-windows must have same "
