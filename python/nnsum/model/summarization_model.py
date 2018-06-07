@@ -50,7 +50,8 @@ class SummarizationModel(nn.Module):
         inv_order = Variable(inv_order.data)
         return srt_inp, srt_wc, inv_order
 
-    def forward(self, inputs, decoder_supervision=None, mask_logits=False):
+    def forward(self, inputs, decoder_supervision=None, mask_logits=False,
+                return_attention=False):
 
         tokens = self.prepare_input_(inputs)
         batch_size, doc_size, sent_size = tokens.size()
@@ -75,7 +76,7 @@ class SummarizationModel(nn.Module):
             sentence_embeddings = self.sentence_encoder(
                 token_embeddings, inputs.sentence_lengths, inputs)
 
-        logits = self.sentence_extractor(
+        logits, attention = self.sentence_extractor(
             sentence_embeddings,
             inputs.num_sentences, 
             targets=decoder_supervision)
@@ -84,7 +85,10 @@ class SummarizationModel(nn.Module):
             mask = tokens.data[:,:,0].eq(0)
             logits.data.masked_fill_(mask, float("-inf"))
 
-        return logits 
+        if return_attention:
+            return logits, attention
+        else:
+            return logits 
 
     def predict(self, inputs, metadata, return_indices=False, 
                 decoder_supervision=None, max_length=100):
