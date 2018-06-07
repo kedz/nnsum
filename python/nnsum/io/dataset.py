@@ -200,12 +200,14 @@ class Dataset(object):
                             0, indices_batch, out=self.cpu_buffers_[j].data)
 
                     elif length is not None:
-                        max_len = length.index_select(
-                            0, indices_batch).max()
-                        buffer = self.data_[j][:,:max_len].index_select(
+                        max_len = int(length.index_select(
+                            0, indices_batch).max())
+                        buffer = torch.index_select(
+                            self.data_[j][:,:max_len],
                             0, indices_batch, out=self.cpu_buffers_[j].data)
                     else:
-                        buffer = self.data_[j].index_select(
+                        buffer = torch.index_select(
+                            self.data_[j],
                             0, indices_batch, out=self.cpu_buffers_[j].data)
 
                     if self.gpu_ > -1:

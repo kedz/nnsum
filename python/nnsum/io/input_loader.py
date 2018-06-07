@@ -55,9 +55,9 @@ def load_sds_inputs(inputs_path, vocab, sent_limit=None):
             pretty_sentence_lengths.append(doc_sentence_lengths)
 
     num_sentences = torch.LongTensor(num_sentences)
-    max_sents = num_sentences.max()
+    max_sents = int(num_sentences.max())
     num_tokens = torch.LongTensor(num_tokens)
-    max_tokens = num_tokens.max()
+    max_tokens = int(num_tokens.max())
 
     for t in tokens:
         if len(t) < max_tokens:
@@ -107,7 +107,7 @@ def load_sds_labels(path, sent_limit=None):
             num_sentences.append(len(doc_labels))
 
     num_sentences = torch.LongTensor(num_sentences)
-    max_sents = num_sentences.max()
+    max_sents = int(num_sentences.max())
 
     for doc_labels in labels:
         if len(doc_labels) < max_sents:
@@ -128,7 +128,7 @@ def load_sds_labels(path, sent_limit=None):
 
 
 def make_sds_dataset(inputs_path, labels_path, vocab, batch_size=32, gpu=-1,
-                     sent_limit=None):
+                     sent_limit=None, shuffle=True):
     inputs_data = load_sds_inputs(inputs_path, vocab, sent_limit=sent_limit)
     labels_data = load_sds_labels(labels_path, sent_limit=sent_limit)
     if inputs_data["ids"] != labels_data["ids"]:
@@ -167,4 +167,38 @@ def make_sds_dataset(inputs_path, labels_path, vocab, batch_size=32, gpu=-1,
         lengths=inputs_data["num_sentences"],
         layout=layout,
         shuffle=True)
+    return dataset 
+
+def make_sds_prediction_dataset(inputs_path, vocab, batch_size=32, gpu=-1,
+                                sent_limit=None, shuffle=True):
+    inputs_data = load_sds_inputs(inputs_path, vocab, sent_limit=sent_limit)
+    
+    layout = [
+        ["inputs",
+            [
+             ["tokens", "tokens"],
+             ["num_tokens", "num_tokens"],
+             ["num_sentences", "num_sentences"],
+             ["sentence_lengths", "sentence_lengths"],
+            ]
+        ],
+        ["metadata", [["id", "id"], 
+                      ["texts","texts"], 
+                      ["sentence_lengths", "pretty_sentence_lengths"]]]
+    ]
+
+    dataset = Dataset(
+        (inputs_data["tokens"], inputs_data["num_tokens"], "tokens"),
+        (inputs_data["num_tokens"], "num_tokens"),
+        (inputs_data["num_sentences"], "num_sentences"),
+        (inputs_data["sentence_lengths"], inputs_data["num_sentences"], 
+         "sentence_lengths"),
+        (inputs_data["ids"], "id"),
+        (inputs_data["texts"], "texts"),
+        (inputs_data["pretty_sentence_lengths"], "pretty_sentence_lengths"),
+        batch_size=batch_size,
+        gpu=gpu,
+        lengths=inputs_data["num_sentences"],
+        layout=layout,
+        shuffle=shuffle)
     return dataset 
