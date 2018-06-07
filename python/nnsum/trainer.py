@@ -34,7 +34,7 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
         
         logits = model(batch.inputs, decoder_supervision=batch.targets.float())
         mask = batch.targets.gt(-1).float()
-        total_sentences_batch = batch.inputs.num_sentences.data.sum()
+        total_sentences_batch = int(batch.inputs.num_sentences.data.sum())
         
         if pos_weight is not None:
             mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
@@ -44,13 +44,13 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
             weight=mask, 
             size_average=False)
 
-        avg_bce = bce / total_sentences_batch
+        avg_bce = bce / float(total_sentences_batch)
         avg_bce.backward()
         for param in model.parameters():
             param.grad.data.clamp_(-grad_clip, grad_clip)
         optimizer.step()
 
-        total_xent += bce.data[0]
+        total_xent += float(bce)
         total_els += total_sentences_batch
 
         if tts:
@@ -83,7 +83,7 @@ def validation_epoch(model, dataset, reference_dir, pos_weight=None,
         
         logits = model(batch.inputs)
         mask = batch.targets.gt(-1).float()
-        total_sentences_batch = batch.inputs.num_sentences.data.sum()
+        total_sentences_batch = int(batch.inputs.num_sentences.data.sum())
         
         if pos_weight is not None:
             mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
@@ -93,9 +93,9 @@ def validation_epoch(model, dataset, reference_dir, pos_weight=None,
             weight=mask, 
             size_average=False)
 
-        avg_bce = bce / total_sentences_batch
+        avg_bce = bce / float(total_sentences_batch)
 
-        total_xent += bce.data[0]
+        total_xent += float(bce)
         total_els += total_sentences_batch
 
         if tts:

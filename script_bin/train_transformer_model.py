@@ -1,7 +1,7 @@
 import nnsum.trainer
 import nnsum.io
 import nnsum.module
-from nnsum.model import Seq2SeqModel
+from nnsum.model import TransformerModel
 
 import torch
 
@@ -46,7 +46,7 @@ def main():
         "--summary-length", default=100, type=int) 
 
     nnsum.module.EmbeddingContext.update_command_line_options(parser)
-    Seq2SeqModel.update_command_line_options(parser)
+    TransformerModel.update_command_line_options(parser)
 
     args = parser.parse_args()
     random.seed(args.seed)
@@ -85,7 +85,7 @@ def main():
         weight = None
 
     logging.info(" Building model.")
-    model = Seq2SeqModel.model_builder(
+    model = TransformerModel.model_builder(
         embedding_context,
         sent_dropout=args.sent_dropout,
         sent_encoder_type=args.sent_encoder,
@@ -93,13 +93,16 @@ def main():
         sent_feature_maps=args.sent_feature_maps,
         sent_rnn_hidden_size=args.sent_rnn_hidden_size,
         sent_rnn_bidirectional=args.sent_rnn_bidirectional,
-        doc_rnn_hidden_size=args.doc_rnn_hidden_size,
-        doc_rnn_bidirectional=args.doc_rnn_bidirectional,
-        doc_rnn_dropout=args.doc_rnn_dropout,
-        doc_rnn_layers=args.doc_rnn_layers,
-        mlp_layers=args.mlp_layers,
-        mlp_dropouts=args.mlp_dropouts,
-        attention=args.attention)
+        attention_heads=args.attention_heads,
+        attention_head_size=args.attention_head_size,
+        transformer_layers=args.transformer_layers)
+#        doc_rnn_hidden_size=args.doc_rnn_hidden_size,
+#        doc_rnn_bidirectional=args.doc_rnn_bidirectional,
+#        doc_rnn_dropout=args.doc_rnn_dropout,
+#        doc_rnn_layers=args.doc_rnn_layers,
+#        mlp_layers=args.mlp_layers,
+#        mlp_dropouts=args.mlp_dropouts,
+#        attention=args.attention)
 
     if args.gpu > -1:
         logging.info(" Placing model on device: {}".format(args.gpu))
@@ -115,7 +118,7 @@ def main():
     best_rouge = 0
     best_epoch = None
 
-    optim = torch.optim.Adam(model.parameters(), lr=.0001) 
+    optim = torch.optim.Adam(model.parameters(), lr=.001, weight_decay=.00001) 
 
     start_time = datetime.datetime.utcnow()
     logging.info(" Training start time: {}".format(start_time))
