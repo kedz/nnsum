@@ -1,14 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..attention import NoAttention, BiLinearSoftmaxAttention
+from ..attention import (NoAttention, BiLinearSoftmaxAttention, 
+                         BiLinearSigmoidAttention)
 
 
 class Seq2SeqSentenceExtractor(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=1, 
                  cell="gru", rnn_dropout=0.0, bidirectional=False,
                  mlp_layers=[100], mlp_dropouts=[.25],
-                 attention="dot"):
+                 attention="bilinear-softmax"):
 
         super(Seq2SeqSentenceExtractor, self).__init__()
 
@@ -42,12 +43,15 @@ class Seq2SeqSentenceExtractor(nn.Module):
 
         self.rnn_dropout = rnn_dropout
 
-        if attention == "dot":
+        if attention == "bilinear-softmax":
             self.attention = BiLinearSoftmaxAttention()
-        elif attention is None:
+        elif attention == "bilinear-sigmoid":
+            self.attention = BiLinearSigmoidAttention()
+        elif attention == "none":
             self.attention = NoAttention()
         else:
-            raise Exception("attention must be None or 'dot'.")
+            raise Exception("attention must be 'none', 'bilinear-softmax', "
+                            "or 'bilinear-sigmoid'.")
 
         self.teacher_forcing = True
 
@@ -55,7 +59,7 @@ class Seq2SeqSentenceExtractor(nn.Module):
         if bidirectional:
             inp_size *= 2
 
-        if attention is not None:
+        if attention != "none":
             inp_size *= 2
         mlp = []
         for out_size, dropout in zip(mlp_layers, mlp_dropouts):
@@ -102,7 +106,7 @@ class Seq2SeqSentenceExtractor(nn.Module):
         mlp_input, scores = self.attention(
             encoder_output, decoder_output, num_sentences)
 
-        return self.mlp(mlp_input).squeeze(2)
+        return self.mlp(mlp_input).squeeze(2), scores
 
 
     def initialize_parameters(self, logger=None):

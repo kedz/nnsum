@@ -6,7 +6,6 @@ import torch.nn.functional as F
 class BiLinearSoftmaxAttention(nn.Module):
     def __init__(self):
         super(BiLinearSoftmaxAttention, self).__init__()
-        print("DOT")
 
     def forward(self, context, query, length):
         raw_scores = torch.bmm(query, context.permute(0, 2, 1))
@@ -14,7 +13,7 @@ class BiLinearSoftmaxAttention(nn.Module):
             if l < raw_scores.size(2):
                 raw_scores.data[b,:,l:].fill_(float("-inf"))
 
-        bs = length.size(0)
+        #bs = length.size(0)
         #diag_mask = torch.diag(length.data.new(length.data.max()).fill_(1))
         #mask = diag_mask.unsqueeze(0).byte().repeat(bs, 1, 1)
 
