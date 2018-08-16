@@ -50,6 +50,7 @@ def compute_rouge(model, dataset, reference_dir, output_dir,
                 max_length=summary_length+25)
             for pos_b in positions:
                 for p in pos_b:
+                    p = int(p)
                     hist[p] = hist.get(p, 0) + 1
             for b, text in enumerate(texts):
                 id = batch.metadata.id[b]
