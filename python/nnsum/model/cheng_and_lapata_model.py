@@ -1,11 +1,11 @@
 from nnsum.model.summarization_model import SummarizationModel
 from nnsum.module.sentence_encoder import (AveragingSentenceEncoder)
-from nnsum.module.sentence_extractor import Seq2SeqSentenceExtractor
+from nnsum.module.sentence_extractor import ChengAndLapataSentenceExtractor
 
 import logging
 
 
-class Seq2SeqModel(SummarizationModel):
+class ChengAndLapataModel(SummarizationModel):
 
     @staticmethod
     def update_command_line_options(parser):
@@ -30,17 +30,9 @@ class Seq2SeqModel(SummarizationModel):
         parser.add_argument(
             "--doc-rnn-hidden-size", default=100, type=int)
         parser.add_argument(
-            "--doc-rnn-bidirectional", action="store_true", default=False)
-        parser.add_argument(
             "--doc-rnn-dropout", default=.25, type=float)
         parser.add_argument(
             "--doc-rnn-layers", default=1, type=int)
-    
-        # Attention Parameters
-        parser.add_argument(
-            "--attention", type=str, default="bilinear-softmax",
-            choices=["none", "bilinear-softmax", "bilinear-sigmoid"]) 
-
 
         # MLP Parameters
         parser.add_argument(
@@ -60,10 +52,8 @@ class Seq2SeqModel(SummarizationModel):
                       sent_rnn_layers=1,
                       doc_rnn_cell="gru", 
                       doc_rnn_hidden_size=150, 
-                      doc_rnn_bidirectional=False,
                       doc_rnn_dropout=.25,
                       doc_rnn_layers=1,
-                      attention="bilinear-softmax",
                       mlp_layers=[100], 
                       mlp_dropouts=[.25]):
 
@@ -76,11 +66,6 @@ class Seq2SeqModel(SummarizationModel):
             raise Exception(
                 "mlp_layers and mlp_dropouts must have same number",
                 "of arguments!")
-
-        if attention not in ["none", "bilinear-softmax", "bilinear-sigmoid"]:
-            raise Exception(
-                "attention must be one of 'none', 'bilinear-softmax', "
-                "or 'bilinear-sigmoid'.")
 
         if sent_encoder_type == "avg":
              sent_enc = AveragingSentenceEncoder(
@@ -104,15 +89,14 @@ class Seq2SeqModel(SummarizationModel):
         else:
             raise Exception("sentence_encoder must be 'rnn', 'cnn', or 'avg'")
  
-        sent_ext = Seq2SeqSentenceExtractor(
+        print(sent_enc.size)
+        sent_ext = ChengAndLapataSentenceExtractor(
             sent_enc.size, 
             doc_rnn_hidden_size,
             num_layers=doc_rnn_layers, 
             cell=doc_rnn_cell, 
             rnn_dropout=doc_rnn_dropout,
-            bidirectional=doc_rnn_bidirectional,
             mlp_layers=mlp_layers, 
-            mlp_dropouts=mlp_dropouts,
-            attention=attention)
+            mlp_dropouts=mlp_dropouts)
 
-        return Seq2SeqModel(embedding_context, sent_enc, sent_ext)
+        return ChengAndLapataModel(embedding_context, sent_enc, sent_ext)

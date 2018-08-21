@@ -117,16 +117,16 @@ class Seq2SeqSentenceExtractor(nn.Module):
                 if logger:
                     logger.info(" {} ({}): Xavier normal init.".format(
                         name, ",".join([str(x) for x in p.size()])))
-                nn.init.xavier_normal(p)    
+                nn.init.xavier_normal_(p)    
             elif "bias" in name:
                 if logger:
                     logger.info(" {} ({}): constant (0) init.".format(
                         name, ",".join([str(x) for x in p.size()])))
-                nn.init.constant(p, 0)    
+                nn.init.constant_(p, 0)    
             else:
                 if logger:
                     logger.info(" {} ({}): random normal init.".format(
                         name, ",".join([str(x) for x in p.size()])))
-                nn.init.normal(p)    
+                nn.init.normal_(p)    
         if logger:
             logger.info(" Seq2SeqSentenceExtractor initialization finished.")

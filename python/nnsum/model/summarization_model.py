@@ -76,10 +76,16 @@ class SummarizationModel(nn.Module):
             sentence_embeddings = self.sentence_encoder(
                 token_embeddings, inputs.sentence_lengths, inputs)
 
-        logits, attention = self.sentence_extractor(
+        logits_and_attention = self.sentence_extractor(
             sentence_embeddings,
             inputs.num_sentences, 
             targets=decoder_supervision)
+
+        if isinstance(logits_and_attention, (list, tuple)):
+            logits, attention = logits_and_attention
+        else:
+            logits = logits_and_attention
+            attention = None
 
         if mask_logits:
             mask = tokens.data[:,:,0].eq(0)
@@ -107,7 +113,7 @@ class SummarizationModel(nn.Module):
                 if i >= inputs.num_sentences.data[b]:
                     break
                 text.append(metadata.texts[b][i])
-                pos.append(i)
+                pos.append(int(i))
                 wc += metadata.sentence_lengths[b][i]
 
                 if wc > max_length:
