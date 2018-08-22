@@ -38,7 +38,7 @@ class RNNSentenceExtractor(nn.Module):
         for out_size, dropout in zip(mlp_layers, mlp_dropouts):
             mlp.append(nn.Linear(inp_size, out_size))
             mlp.append(nn.ReLU())
-            mlp.append(nn.Dropout(p=dropout))
+            mlp.append(nn.Dropout(p=dropout, inplace=True))
             inp_size = out_size 
         mlp.append(nn.Linear(inp_size, 1))
         self.mlp = nn.Sequential(*mlp)
@@ -56,7 +56,8 @@ class RNNSentenceExtractor(nn.Module):
             packed_rnn_output, 
             batch_first=False)
         mlp_input = F.dropout(
-            mlp_input, p=self.rnn_dropout, training=self.training)
+            mlp_input, p=self.rnn_dropout, training=self.training,
+            inplace=True)
         logits = self.mlp(mlp_input).permute(1, 0, 2).squeeze(-1)
         return logits
 
