@@ -18,6 +18,8 @@ class AveragingSentenceEncoder(nn.Module):
         word_count = word_count.float().masked_fill(
             word_count.eq(0), 1).unsqueeze(2)
         inputs_mean = inputs_sum / word_count
+        inputs_mean = F.dropout(
+            inputs_mean, p=self.dropout_, training=self.training, inplace=True)
         return inputs_mean
 
     @property
