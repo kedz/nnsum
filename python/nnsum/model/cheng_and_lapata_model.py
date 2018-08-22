@@ -1,5 +1,6 @@
 from nnsum.model.summarization_model import SummarizationModel
-from nnsum.module.sentence_encoder import (AveragingSentenceEncoder)
+from nnsum.module.sentence_encoder import (AveragingSentenceEncoder,
+    CNNSentenceEncoder)
 from nnsum.module.sentence_extractor import ChengAndLapataSentenceExtractor
 
 import logging
@@ -68,15 +69,14 @@ class ChengAndLapataModel(SummarizationModel):
                 "of arguments!")
 
         if sent_encoder_type == "avg":
-             sent_enc = AveragingSentenceEncoder(
-                 embedding_context.embedding_size, dropout=sent_dropout)
-             logging.info(" Sentence Encoder: " + repr(sent_enc))
+            sent_enc = AveragingSentenceEncoder(
+                embedding_context.embedding_size, dropout=sent_dropout)
         elif sent_encoder_type == "cnn":
-            sentence_encoder = SentenceCNNEncoder(
-                 embedding_layer.size,
-                 feature_maps=sent_feature_maps, 
-                 filter_windows=sent_filter_windows,
-                 dropout=sent_dropout)
+            sent_enc = CNNSentenceEncoder(
+                embedding_layer.size,
+                feature_maps=sent_feature_maps, 
+                filter_windows=sent_filter_windows,
+                dropout=sent_dropout)
         elif sent_encoder_type == "rnn":
              sentence_encoder = SentenceRNNEncoder(
                  embedding_layer.size,
@@ -88,8 +88,8 @@ class ChengAndLapataModel(SummarizationModel):
     
         else:
             raise Exception("sentence_encoder must be 'rnn', 'cnn', or 'avg'")
+        logging.info(" Sentence Encoder: " + repr(sent_enc))
  
-        print(sent_enc.size)
         sent_ext = ChengAndLapataSentenceExtractor(
             sent_enc.size, 
             doc_rnn_hidden_size,

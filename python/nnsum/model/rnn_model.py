@@ -1,5 +1,6 @@
 from nnsum.model.summarization_model import SummarizationModel
-from nnsum.module.sentence_encoder import (AveragingSentenceEncoder)
+from nnsum.module.sentence_encoder import (AveragingSentenceEncoder,
+    CNNSentenceEncoder)
 from nnsum.module.sentence_extractor import RNNSentenceExtractor
 
 import logging
@@ -75,11 +76,12 @@ class RNNModel(SummarizationModel):
                  embedding_context.embedding_size, dropout=sent_dropout)
              logging.info(" Sentence Encoder: " + repr(sent_enc))
         elif sent_encoder_type == "cnn":
-            sentence_encoder = SentenceCNNEncoder(
-                 embedding_layer.size,
+             sent_enc = CNNSentenceEncoder(
+                 embedding_context.embedding_size,
                  feature_maps=sent_feature_maps, 
                  filter_windows=sent_filter_windows,
                  dropout=sent_dropout)
+             logging.info(" Sentence Encoder: " + repr(sent_enc))
         elif sent_encoder_type == "rnn":
              sentence_encoder = SentenceRNNEncoder(
                  embedding_layer.size,
