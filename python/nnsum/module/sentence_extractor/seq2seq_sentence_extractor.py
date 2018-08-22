@@ -65,7 +65,7 @@ class Seq2SeqSentenceExtractor(nn.Module):
         for out_size, dropout in zip(mlp_layers, mlp_dropouts):
             mlp.append(nn.Linear(inp_size, out_size))
             mlp.append(nn.ReLU())
-            mlp.append(nn.Dropout(p=dropout))
+            mlp.append(nn.Dropout(p=dropout, inplace=True))
             inp_size = out_size 
         mlp.append(nn.Linear(inp_size, 1))
         self.mlp = nn.Sequential(*mlp)
@@ -80,7 +80,8 @@ class Seq2SeqSentenceExtractor(nn.Module):
         output, _ = nn.utils.rnn.pad_packed_sequence(
             packed_output, 
             batch_first=True)
-        output = F.dropout(output, p=self.rnn_dropout, training=self.training)
+        output = F.dropout(
+            output, p=self.rnn_dropout, training=self.training, inplace=True)
         return output, updated_rnn_state
 
     def forward(self, sentence_embeddings, num_sentences, targets=None):
