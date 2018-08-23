@@ -73,7 +73,7 @@ class ChengAndLapataModel(SummarizationModel):
                 embedding_context.embedding_size, dropout=sent_dropout)
         elif sent_encoder_type == "cnn":
             sent_enc = CNNSentenceEncoder(
-                embedding_layer.size,
+                embedding_context.embedding_size,
                 feature_maps=sent_feature_maps, 
                 filter_windows=sent_filter_windows,
                 dropout=sent_dropout)
