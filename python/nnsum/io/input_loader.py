@@ -202,3 +202,104 @@ def make_sds_prediction_dataset(inputs_path, vocab, batch_size=32, gpu=-1,
         layout=layout,
         shuffle=shuffle)
     return dataset 
+
+
+
+def load_from_list(inputs_list, vocab, sent_limit=None):
+
+    tokens = []
+    sentence_lengths = []
+    num_sentences = []
+    num_tokens = []
+    pretty_sentence_lengths = []
+    texts = []
+    ids = []
+   
+    #logging.info(" Reading inputs from {}".format(inputs_path))
+ 
+    for doc in inputs_list:
+        if sent_limit is not None:
+            sentences = doc[:sent_limit]
+        else:
+            sentences = doc
+
+        doc_text = []
+        doc_tokens = []
+        doc_sentence_lengths = [] 
+        doc_pretty_sentence_lengths = []
+
+        for sentence in sentences:
+            doc_text.append(" ".join(sentence))
+            doc_sentence_lengths.append(len(sentence))
+            doc_tokens.extend([vocab.index(t.lower()) for t in sentence])
+            doc_pretty_sentence_lengths.append(len(sentence))
+
+        tokens.append(doc_tokens)
+        sentence_lengths.append(doc_sentence_lengths)
+        num_tokens.append(len(doc_tokens))
+        num_sentences.append(len(doc_sentence_lengths))
+        texts.append(doc_text)
+        pretty_sentence_lengths.append(doc_sentence_lengths)
+
+    num_sentences = torch.LongTensor(num_sentences)
+    max_sents = int(num_sentences.max())
+    num_tokens = torch.LongTensor(num_tokens)
+    max_tokens = int(num_tokens.max())
+
+    for t in tokens:
+        if len(t) < max_tokens:
+            t.extend([0] * (max_tokens - len(t)))
+    for sl in sentence_lengths:
+        if len(sl) < max_sents:
+            #tgt.extend([-1] * (max_sents - len(tgt)))
+            sl.extend([0] * (max_sents - len(sl)))
+
+    tokens = torch.LongTensor(tokens)
+    sentence_lengths = torch.LongTensor(sentence_lengths)
+
+    logging.info(" Read {} documents, {} sentences, and {} tokens".format(
+        tokens.size(0), num_sentences.sum(), num_tokens.sum()))
+    num_unk = tokens.eq(vocab.unknown_index).sum()
+    logging.info(" {} tokens unknown ({:6.2f}%)".format(
+        num_unk, 100 * num_unk / num_tokens.sum()))
+    
+    data = {"texts": texts,
+            "tokens": tokens, 
+            "num_tokens": num_tokens,
+            "num_sentences": num_sentences, 
+            "sentence_lengths": sentence_lengths,
+            "pretty_sentence_lengths": pretty_sentence_lengths}
+    return data
+ 
+
+def make_dataset_from_tokens(input_tokens, vocab, gpu=-1, batch_size=32,
+                             sent_limit=None, shuffle=True):
+    inputs_data = load_from_list(input_tokens, vocab, sent_limit=sent_limit)
+    
+    layout = [
+        ["inputs",
+            [
+             ["tokens", "tokens"],
+             ["num_tokens", "num_tokens"],
+             ["num_sentences", "num_sentences"],
+             ["sentence_lengths", "sentence_lengths"],
+            ]
+        ],
+        ["metadata", [["texts","texts"], 
+                      ["sentence_lengths", "pretty_sentence_lengths"]]]
+    ]
+
+    dataset = Dataset(
+        (inputs_data["tokens"], inputs_data["num_tokens"], "tokens"),
+        (inputs_data["num_tokens"], "num_tokens"),
+        (inputs_data["num_sentences"], "num_sentences"),
+        (inputs_data["sentence_lengths"], inputs_data["num_sentences"], 
+         "sentence_lengths"),
+        (inputs_data["texts"], "texts"),
+        (inputs_data["pretty_sentence_lengths"], "pretty_sentence_lengths"),
+        batch_size=batch_size,
+        gpu=gpu,
+        lengths=inputs_data["num_sentences"],
+        layout=layout,
+        shuffle=shuffle)
+    return dataset 
