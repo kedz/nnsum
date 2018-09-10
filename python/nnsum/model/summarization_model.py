@@ -133,3 +133,61 @@ class SummarizationModel(nn.Module):
             module.initialize_parameters(logger=logger)
         if logger:
             logger.info(" Model parameter initialization finished.\n")
+
+    def token_gradient_magnitude(self, inputs, return_logits=False):
+
+        tokens = self.prepare_input_(inputs)
+        batch_size, doc_size, sent_size = tokens.size()
+
+        if self.sentence_encoder.needs_sorted_sentences:
+            print("ERROR: Need to debug this first.")
+            exit()
+            tokens_srt, word_count_srt, inv_order = self.sort_sentences_(
+                tokens, inputs.word_count) 
+            token_embeddings_srt = self.embeddings(tokens_srt)
+            sentence_embeddings_srt = self.sentence_encoder(
+                token_embeddings_srt, word_count_srt, inputs)
+
+            sentence_embeddings_flat = sentence_embeddings_srt[inv_order]
+            sentence_embeddings = sentence_embeddings_flat.view(
+                batch_size, doc_size, -1)
+
+            mask = tokens.data[:,:,:1].eq(0).repeat(
+                1, 1, sentence_embeddings.size(2))
+            sentence_embeddings.data.masked_fill_(mask, 0)
+
+        else:
+            token_embeddings = self.embeddings(tokens)
+            token_embeddings.requires_grad = True
+            token_embeddings.retain_grad()
+            sentence_embeddings = self.sentence_encoder(
+                token_embeddings, inputs.sentence_lengths, inputs)
+
+        logits_and_attention = self.sentence_extractor(
+            sentence_embeddings,
+            inputs.num_sentences, 
+            targets=None)
+
+        if isinstance(logits_and_attention, (list, tuple)):
+            logits, attention = logits_and_attention
+        else:
+            logits = logits_and_attention
+            attention = None
+
+        mask = tokens.data[:,:,0].eq(0)
+        logits.data.masked_fill_(mask, float("-inf"))
+        positive_labels = logits.data.new().new(logits.data.shape).fill_(1.) 
+
+        bce = F.binary_cross_entropy_with_logits(
+            logits, positive_labels,
+            weight=mask.eq(0).float(), 
+            reduction='mean')
+        bce.backward()
+
+        grad_norms = token_embeddings.grad.norm(p=2, dim=3).data.cpu().numpy()
+        
+        if return_logits:
+            return grad_norms, logits
+
+        else:
+            return grad_norms
