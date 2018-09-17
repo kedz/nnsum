@@ -22,7 +22,7 @@ def compute_class_weights(dataset):
 
 
 def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5, 
-                tts=True):
+                tts=True, mrt=False):
     model.train()
     total_xent = 0
     total_els = 0
@@ -32,25 +32,26 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
     for n_iter, batch in enumerate(dataset.iter_batch(), 1):
         optimizer.zero_grad()
         
-        logits = model(batch.inputs, decoder_supervision=batch.targets.float())
+        out = model(batch.inputs, batch.metadata) if mrt else model(batch.inputs, 
+                                           decoder_supervision=batch.targets.float())
         mask = batch.targets.gt(-1).float()
         total_sentences_batch = int(batch.inputs.num_sentences.data.sum())
         
         if pos_weight is not None:
             mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
 
-        bce = F.binary_cross_entropy_with_logits(
-            logits, batch.targets.float(),
+        loss = out if mrt else F.binary_cross_entropy_with_logits(
+            out, batch.targets.float(),
             weight=mask, 
             size_average=False)
 
-        avg_bce = bce / float(total_sentences_batch)
-        avg_bce.backward()
+        avg_loss = loss / float(total_sentences_batch)
+        avg_loss.backward()
         for param in model.parameters():
             param.grad.data.clamp_(-grad_clip, grad_clip)
         optimizer.step()
 
-        total_xent += float(bce)
+        total_xent += float(loss)
         total_els += total_sentences_batch
 
         if tts:
@@ -67,12 +68,10 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
     else:
         print("")
 
-
-
     return total_xent / total_els
 
 def validation_epoch(model, dataset, reference_dir, pos_weight=None, 
-                     remove_stopwords=True, summary_length=100, tts=True):
+                     remove_stopwords=True, summary_length=100, tts=True, mrt=False):
     model.eval()
     total_xent = 0
     total_els = 0
@@ -81,21 +80,21 @@ def validation_epoch(model, dataset, reference_dir, pos_weight=None,
     
     for n_iter, batch in enumerate(dataset.iter_batch(), 1):
         
-        logits = model(batch.inputs)
+        out = model(batch.inputs, batch.metadata) if mrt else model(batch.inputs)
         mask = batch.targets.gt(-1).float()
         total_sentences_batch = int(batch.inputs.num_sentences.data.sum())
         
         if pos_weight is not None:
             mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
 
-        bce = F.binary_cross_entropy_with_logits(
-            logits, batch.targets.float(),
+        loss = out if mrt else F.binary_cross_entropy_with_logits(
+            out, batch.targets.float(),
             weight=mask, 
             size_average=False)
 
-        avg_bce = bce / float(total_sentences_batch)
+        avg_loss = loss / float(total_sentences_batch)
 
-        total_xent += float(bce)
+        total_xent += float(loss)
         total_els += total_sentences_batch
 
         if tts:
