@@ -1,7 +1,7 @@
 import nnsum.trainer
 import nnsum.io
 import nnsum.module
-from nnsum.model import Seq2SeqModel
+from nnsum.model import RNNModel
 
 import torch
 
@@ -46,7 +46,7 @@ def main():
         "--summary-length", default=100, type=int) 
 
     nnsum.module.EmbeddingContext.update_command_line_options(parser)
-    Seq2SeqModel.update_command_line_options(parser)
+    RNNModel.update_command_line_options(parser)
 
     args = parser.parse_args()
     random.seed(args.seed)
@@ -87,7 +87,7 @@ def main():
         weight = None
 
     logging.info(" Building model.")
-    model = Seq2SeqModel.model_builder(
+    model = RNNModel.model_builder(
         embedding_context,
         sent_dropout=args.sent_dropout,
         sent_encoder_type=args.sent_encoder,
@@ -100,8 +100,7 @@ def main():
         doc_rnn_dropout=args.doc_rnn_dropout,
         doc_rnn_layers=args.doc_rnn_layers,
         mlp_layers=args.mlp_layers,
-        mlp_dropouts=args.mlp_dropouts,
-        attention=args.attention)
+        mlp_dropouts=args.mlp_dropouts)
 
     if args.gpu > -1:
         logging.info(" Placing model on device: {}".format(args.gpu))

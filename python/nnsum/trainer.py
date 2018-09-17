@@ -31,7 +31,6 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
     
     for n_iter, batch in enumerate(dataset.iter_batch(), 1):
         optimizer.zero_grad()
-        
         out = model(batch.inputs, batch.metadata) if mrt else model(batch.inputs, 
                                            decoder_supervision=batch.targets.float())
         mask = batch.targets.gt(-1).float()
@@ -43,7 +42,7 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
         loss = out if mrt else F.binary_cross_entropy_with_logits(
             out, batch.targets.float(),
             weight=mask, 
-            size_average=False)
+            reduction='sum')
 
         avg_loss = loss / float(total_sentences_batch)
         avg_loss.backward()
@@ -90,7 +89,7 @@ def validation_epoch(model, dataset, reference_dir, pos_weight=None,
         loss = out if mrt else F.binary_cross_entropy_with_logits(
             out, batch.targets.float(),
             weight=mask, 
-            size_average=False)
+            reduction='sum')
 
         avg_loss = loss / float(total_sentences_batch)
 

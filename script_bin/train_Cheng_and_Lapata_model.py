@@ -1,7 +1,7 @@
 import nnsum.trainer
 import nnsum.io
 import nnsum.module
-from nnsum.model import Seq2SeqModel
+from nnsum.model import ChengAndLapataModel
 
 import torch
 
@@ -20,7 +20,7 @@ def check_dir(path):
         os.makedirs(dirname)
 
 def main():
-    parser = argparse.ArgumentParser("Train a seq2seq extractive summarizer.")
+    parser = argparse.ArgumentParser("Train a Cheng and Lapata extractive summarizer.")
     parser.add_argument("--train-inputs", type=str, required=True)
     parser.add_argument("--train-labels", type=str, required=True)
     parser.add_argument("--valid-inputs", type=str, required=True)
@@ -38,6 +38,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--weighted", default=False, action="store_true")
     parser.add_argument("--sent-limit", default=None, type=int)
+    parser.add_argument("--teacher-forcing", default=5, type=int)
 
     # ROUGE Parameters
     parser.add_argument(
@@ -46,7 +47,7 @@ def main():
         "--summary-length", default=100, type=int) 
 
     nnsum.module.EmbeddingContext.update_command_line_options(parser)
-    Seq2SeqModel.update_command_line_options(parser)
+    ChengAndLapataModel.update_command_line_options(parser)
 
     args = parser.parse_args()
     random.seed(args.seed)
@@ -87,7 +88,7 @@ def main():
         weight = None
 
     logging.info(" Building model.")
-    model = Seq2SeqModel.model_builder(
+    model = ChengAndLapataModel.model_builder(
         embedding_context,
         sent_dropout=args.sent_dropout,
         sent_encoder_type=args.sent_encoder,
@@ -96,12 +97,10 @@ def main():
         sent_rnn_hidden_size=args.sent_rnn_hidden_size,
         sent_rnn_bidirectional=args.sent_rnn_bidirectional,
         doc_rnn_hidden_size=args.doc_rnn_hidden_size,
-        doc_rnn_bidirectional=args.doc_rnn_bidirectional,
         doc_rnn_dropout=args.doc_rnn_dropout,
         doc_rnn_layers=args.doc_rnn_layers,
         mlp_layers=args.mlp_layers,
-        mlp_dropouts=args.mlp_dropouts,
-        attention=args.attention)
+        mlp_dropouts=args.mlp_dropouts)
 
     if args.gpu > -1:
         logging.info(" Placing model on device: {}".format(args.gpu))
@@ -124,6 +123,10 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         logging.info(" *** Epoch {:4d} ***".format(epoch))
+
+        if args.teacher_forcing + 1 == epoch:
+            logging.info(" Disabling teacher forcing!")
+            model.teacher_forcing = False
      
         train_start_time = datetime.datetime.utcnow()
         train_xent = nnsum.trainer.train_epoch(
@@ -166,7 +169,8 @@ def main():
             logging.info(" Time elaspsed: {}".format(time_elapsed))
             logging.info(" Estimated completion time: {}\n".format(ect))
 
-    logging.info(" Finished training @ {}\n".format(datetime.datetime.utcnow()))
+    logging.info(
+        " Finished training @ {}\n".format(datetime.datetime.utcnow()))
     logging.info(" Best epoch: {}  ROUGE-1 {:0.3f}  ROUGE-2 {:0.3f}".format(
         best_epoch, *valid_results[best_epoch - 1][1:]))
     

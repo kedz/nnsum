@@ -114,6 +114,6 @@ class EmbeddingContext(nn.Module):
         else:
             if logger:
                 logger.info(" Initializing with random normal.")
-            nn.init.normal(self.embeddings.weight)    
+            nn.init.normal_(self.embeddings.weight)    
         if logger:
             logger.info(" EmbeddingContext initialization finished.")
