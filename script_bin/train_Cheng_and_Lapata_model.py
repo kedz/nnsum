@@ -72,12 +72,14 @@ def main():
     train_data = nnsum.io.make_sds_dataset(
         args.train_inputs, args.train_labels, embedding_context.vocab,
         batch_size=args.batch_size,
+        sent_limit=args.sent_limit,
         gpu=args.gpu)
 
     logging.info(" Loading validation data.")
     valid_data = nnsum.io.make_sds_dataset(
         args.valid_inputs, args.valid_labels, embedding_context.vocab,
         batch_size=args.batch_size,
+        sent_limit=args.sent_limit,
         gpu=args.gpu)
     
     if args.weighted:
