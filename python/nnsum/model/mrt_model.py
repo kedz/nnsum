@@ -6,11 +6,12 @@ from torch.autograd import Variable
 import random
 import numpy as np
 from nnsum.utils.rouge_score import RougeScorer
+import multiprocessing as par
 import math
 
 class MRTModel:
 
-  def __init__(self, refs_dict, model, num_samples = 20, budget = 100, alpha = 2.0, gamma = 1.0, stopwords = set()):
+  def __init__(self, refs_dict, model, num_samples = 100, budget = 100, alpha = 2.0, gamma = 1.0, stopwords = set()):
     self.model = model
     self.num_samples = num_samples
     self.budget = budget
@@ -47,6 +48,11 @@ class MRTModel:
         Returns a batch_size x sample_size tensor of risks for each sample.
         In this callback you would implement -1*Rouge for each sample.
         """
+        '''batch_size = samples.size(0)
+        params = map(lambda x: (x, samples, ids, texts, indices, self.scorer, self.refs_dict), list(range(batch_size)))
+        results = self.pool.map(_get_risk, params)
+        return Variable(torch.stack(results))
+        '''
 
         batch_size = samples.size(0)
         sample_size = samples.size(1)
@@ -63,7 +69,7 @@ class MRTModel:
                           discarded += 1  
                 # this is the computation of risk based on rouge
                 rouge = self.scorer.compute(self.refs_dict[ids[b]])
-                self.avg_rouge = 0 #self.avg_rouge * 0.9999 + rouge * 0.0001
+                self.avg_rouge = self.avg_rouge * 0.99 + rouge * 0.01
                 sample_risk[b, s] = -(rouge - self.avg_rouge)
         return Variable(sample_risk)
 
