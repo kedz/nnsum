@@ -44,14 +44,14 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
             weight=mask, 
             reduction='sum')
 
-        avg_loss = loss / float(total_sentences_batch)
+        avg_loss = loss if mrt else loss / float(total_sentences_batch)
         avg_loss.backward()
         for param in model.parameters():
             param.grad.data.clamp_(-grad_clip, grad_clip)
         optimizer.step()
 
         total_xent += float(loss)
-        total_els += total_sentences_batch
+        total_els += 1 if mrt else total_sentences_batch
 
         if tts:
             sys.stdout.write(
@@ -91,10 +91,10 @@ def validation_epoch(model, dataset, reference_dir, pos_weight=None,
             weight=mask, 
             reduction='sum')
 
-        avg_loss = loss / float(total_sentences_batch)
+        avg_loss = loss if mrt else loss / float(total_sentences_batch)
 
         total_xent += float(loss)
-        total_els += total_sentences_batch
+        total_els += 1 if mrt else total_sentences_batch
 
         if tts:
             sys.stdout.write(

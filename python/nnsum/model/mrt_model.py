@@ -11,7 +11,7 @@ import math
 
 class MRTModel:
 
-  def __init__(self, refs_dict, model, num_samples = 100, budget = 100, alpha = 2.0, gamma = 1.0, stopwords = set()):
+  def __init__(self, refs_dict, model, num_samples = 20, budget = 100, alpha = 0.05, gamma = 1.0, stopwords = set()):
     self.model = model
     self.num_samples = num_samples
     self.budget = budget
@@ -41,7 +41,7 @@ class MRTModel:
     return self.model.predict(inputs=inputs, metadata=metadata, return_indices=return_indices,
                 decoder_supervision=decoder_supervision, max_length=max_length)
 
-  def get_risk(self, samples, ids, texts, indices):
+  def get_risk(self, samples, ids, texts):
         """
         Selects the first *budget* sentences that are equal to 1 and computes
         the total risk for that selection.
@@ -62,14 +62,13 @@ class MRTModel:
         for b in range(batch_size):
             for s in range(sample_size):
                 discarded = 0
-                for i in range(indices.size(1)):
-                    sen = indices.data[b][i]
+                for sen in range(seq_size): 
                     if samples.data[b, s, sen] == 1 and sen < len(texts[b]):
                         if not self.scorer.update(texts[b][sen],"%s-%s" % (ids[b],sen)):
                           discarded += 1  
                 # this is the computation of risk based on rouge
                 rouge = self.scorer.compute(self.refs_dict[ids[b]])
-                self.avg_rouge = self.avg_rouge * 0.99 + rouge * 0.01
+                self.avg_rouge = 0 # self.avg_rouge * 0.99 + rouge * 0.01
                 sample_risk[b, s] = -(rouge - self.avg_rouge)
         return Variable(sample_risk)
 
@@ -88,7 +87,7 @@ class MRTModel:
   def categorical(self, probs):
     batch = []
     for b in range(probs.size(0)):
-      idx = self.cudalong(torch.multinomial(probs.data[b]+0.0001,4,replacement=False))
+      idx = self.cudalong(torch.multinomial(probs.data[b]+0.0001,3,replacement=False))
       samples = self.cudalong(torch.cuda.LongTensor(probs.size(1),probs.size(2)).fill_(0))
       samples = samples.scatter(1,idx,1)
       batch.append(samples)
@@ -96,8 +95,7 @@ class MRTModel:
 
   def forward(self, inputs, metadata):
     logits = self.model.forward(inputs)
-    probs = torch.nn.functional.sigmoid(logits)
-    _, indices = torch.sort(probs, 1, descending=True)
+    probs = torch.sigmoid(logits)
     
     lengths = inputs.num_sentences
     mask = self.make_mask(lengths)
@@ -149,7 +147,7 @@ class MRTModel:
 
     # Here is where you would call your rouge function and return 1 - rouge
     # to make it a risk. sample_risks is a batch_size x num_samples tensor.
-    sample_risks = self.get_risk(samples, metadata.id, metadata.texts, indices)
+    sample_risks = self.get_risk(samples, metadata.id, metadata.texts)
     expected_risk = (q_probs * sample_risks).sum(1)
     # average the expected_risk over the batch
     avg_expected_risk = expected_risk.mean()
