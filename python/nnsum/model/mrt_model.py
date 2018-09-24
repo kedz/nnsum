@@ -5,13 +5,12 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import random
 import numpy as np
-from nnsum.utils.rouge_score import RougeScorer
 import multiprocessing as par
 import math
 
 class MRTModel:
 
-  def __init__(self, refs_dict, model, num_samples = 20, budget = 100, alpha = 0.05, gamma = 1.0, stopwords = set()):
+  def __init__(self, refs_dict, model, scorer, num_samples = 20, budget = 100, alpha = 0.005, gamma = 1.0, stopwords = set()):
     self.model = model
     self.num_samples = num_samples
     self.budget = budget
@@ -19,7 +18,7 @@ class MRTModel:
     self.alpha = alpha
     self.gamma = gamma
     self.avg_rouge = 0.0
-    self.scorer = RougeScorer(stopwords, word_limit = budget)
+    self.scorer = scorer
     
   def __call__(self, inputs, metadata):
     return self.forward(inputs, metadata)
@@ -68,7 +67,7 @@ class MRTModel:
                           discarded += 1  
                 # this is the computation of risk based on rouge
                 rouge = self.scorer.compute(self.refs_dict[ids[b]])
-                self.avg_rouge = 0 # self.avg_rouge * 0.99 + rouge * 0.01
+                self.avg_rouge = 0# self.avg_rouge * 0.999 + rouge * 0.001
                 sample_risk[b, s] = -(rouge - self.avg_rouge)
         return Variable(sample_risk)
 
@@ -87,7 +86,7 @@ class MRTModel:
   def categorical(self, probs):
     batch = []
     for b in range(probs.size(0)):
-      idx = self.cudalong(torch.multinomial(probs.data[b]+0.0001,3,replacement=False))
+      idx = self.cudalong(torch.multinomial(probs.data[b]+0.0001,4,replacement=False))
       samples = self.cudalong(torch.cuda.LongTensor(probs.size(1),probs.size(2)).fill_(0))
       samples = samples.scatter(1,idx,1)
       batch.append(samples)

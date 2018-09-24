@@ -12,6 +12,7 @@ from nnsum.model.mrt_model import MRTModel
 from nnsum.trainer import collect_reference_paths
 from threading import Thread
 import multiprocessing
+from nnsum.utils.rouge_score import RougeScorer
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -56,6 +57,7 @@ def main():
     parser.add_argument("--train-refs", type=str, required=True)
     parser.add_argument("--valid-refs", type=str, required=True)
     parser.add_argument("--pretrained-model", type=str, required=True)
+    parser.add_argument("--alt-rouge", default=False, action="store_true")
 
     # Output File Locations
     parser.add_argument("--results-path", type=str, default=None)
@@ -100,7 +102,7 @@ def main():
       stopwords = set()
       logging.warning(" Failed to load stopwords, training without.")
 
-    refs_dict = get_refs_dict(ids2refs, stopwords, args.summary_length)
+    ref_dicts = get_refs_dict(ids2refs, stopwords, args.summary_length)
 
     try:
       pretrained_model = torch.load(args.pretrained_model, map_location=lambda storage, loc: storage)
@@ -108,7 +110,13 @@ def main():
     except:
       raise Exception("mrt without pretrained model is not supported.")
 
-    model = MRTModel(refs_dict, pretrained_model)
+    scorer = RougeScorer(stopwords, word_limit = args.summary_length)
+
+    alt_rouge = (ref_dicts,scorer) if args.alt_rouge else None
+
+    logging.info(" Alt rouge validation is set to: %s" % args.alt_rouge)
+   
+    model = MRTModel(ref_dicts, pretrained_model, scorer=scorer, stopwords=stopwords)
 
     logging.info(" Initializing vocabulary and embeddings.")
     embedding_context = nnsum.io.initialize_embedding_context(
@@ -171,7 +179,7 @@ def main():
         valid_result = nnsum.trainer.validation_epoch(
             model, valid_data, args.valid_refs, pos_weight=weight,
             remove_stopwords=args.remove_stopwords, 
-            summary_length=args.summary_length, mrt=True)
+            summary_length=args.summary_length, mrt=True, alt_rouge=alt_rouge)
         valid_results.append(valid_result)
         valid_epoch_time = datetime.datetime.utcnow() - valid_start_time
         valid_times.append(valid_epoch_time)

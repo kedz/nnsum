@@ -70,7 +70,7 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
     return total_xent / total_els
 
 def validation_epoch(model, dataset, reference_dir, pos_weight=None, 
-                     remove_stopwords=True, summary_length=100, tts=True, mrt=False):
+                     remove_stopwords=True, summary_length=100, tts=True, mrt=False, alt_rouge=None):
     model.eval()
     total_xent = 0
     total_els = 0
@@ -111,13 +111,13 @@ def validation_epoch(model, dataset, reference_dir, pos_weight=None,
     else:
         print("")
 
-    rouge_df, hist = compute_rouge(
+    rouge_df, hist, alt_score = compute_rouge(
         model, dataset, reference_dir, remove_stopwords=remove_stopwords,
-        summary_length=summary_length)
+        summary_length=summary_length, alt_rouge=alt_rouge)
     r1, r2 = rouge_df.values[0].tolist()    
    
     avg_xent = total_xent / total_els 
-    return avg_xent, r1 * 100, r2 * 100
+    return avg_xent, (alt_score if alt_rouge else r1) * 100, r2 * 100
 
 def collect_reference_paths(reference_dir):
     ids2refs = defaultdict(list)
@@ -127,7 +127,12 @@ def collect_reference_paths(reference_dir):
     return ids2refs
 
 def compute_rouge(model, dataset, reference_dir, remove_stopwords=True,
-                  summary_length=100):
+                  summary_length=100, alt_rouge = None):
+
+    alt_score = 0.0
+
+    if alt_rouge:
+      (ref_dicts, scorer) = alt_rouge
 
     model.eval()
 
@@ -151,13 +156,19 @@ def compute_rouge(model, dataset, reference_dir, remove_stopwords=True,
                 ref_paths = ids2refs[id]
                 path_data.append([summary_path, ref_paths])
 
+                if alt_rouge:
+                  for sen, pos in zip(text, positions[b]):
+                    scorer.update(sen, "%s-%s" % (id,pos))
+                    #print("DEBUG: %s <===============> %s" % (sen,scorer.cache["%s-%s" % (id,pos)]))
+                  alt_score += scorer.compute(ref_dicts[id])
+                  
         config_text = rouge_papier.util.make_simple_config_text(path_data)
         config_path = manager.create_temp_file(config_text)
         df = rouge_papier.compute_rouge(
             config_path, max_ngram=2, lcs=False, 
             remove_stopwords=remove_stopwords,
             length=summary_length)
-        return df[-1:], hist
+        return df[-1:], hist, alt_score / len(path_data)
 
 
 
