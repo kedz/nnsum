@@ -10,7 +10,7 @@ import math
 
 class MRTModel:
 
-  def __init__(self, refs_dict, model, scorer, num_samples = 20, budget = 100, alpha = 0.005, gamma = 1.0, stopwords = set()):
+  def __init__(self, refs_dict, model, scorer, num_samples = 20, budget = 100, alpha = 0.0005, gamma = 1.0, stopwords = set()):
     self.model = model
     self.num_samples = num_samples
     self.budget = budget
@@ -60,11 +60,10 @@ class MRTModel:
 
         for b in range(batch_size):
             for s in range(sample_size):
-                discarded = 0
                 for sen in range(seq_size): 
                     if samples.data[b, s, sen] == 1 and sen < len(texts[b]):
                         if not self.scorer.update(texts[b][sen],"%s-%s" % (ids[b],sen)):
-                          discarded += 1  
+                          break 
                 # this is the computation of risk based on rouge
                 rouge = self.scorer.compute(self.refs_dict[ids[b]])
                 self.avg_rouge = 0# self.avg_rouge * 0.999 + rouge * 0.001

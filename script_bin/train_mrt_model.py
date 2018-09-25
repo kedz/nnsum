@@ -13,6 +13,7 @@ from nnsum.trainer import collect_reference_paths
 from threading import Thread
 import multiprocessing
 from nnsum.utils.rouge_score import RougeScorer
+from nnsum.utils.word_tokenize import tokenize,normalize
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -23,11 +24,12 @@ def check_dir(path):
 
 def _get_refs(ids2refs, stopwords, word_limit, refs_dict, ids):
   for id in ids:
-    sens = [line.strip().split(" ") for line in open(ids2refs[id][0]).readlines()]
+    sens = [normalize(line.strip()).split(" ") for line in open(ids2refs[id][0]).readlines()]
     tokens = [i for s in sens for i in s][:word_limit]
     d = dict()
     refs_dict[id] = d
     for t in tokens:
+      if t in stopwords: continue
       if t not in d:
         d[t] = 1
       else:
@@ -58,6 +60,7 @@ def main():
     parser.add_argument("--valid-refs", type=str, required=True)
     parser.add_argument("--pretrained-model", type=str, required=True)
     parser.add_argument("--alt-rouge", default=False, action="store_true")
+    parser.add_argument("--alpha", type=float, default=0.0005, required=False)
 
     # Output File Locations
     parser.add_argument("--results-path", type=str, default=None)
@@ -97,7 +100,7 @@ def main():
     ids2refs = {**ids2refs_tr, **ids2refs_vl}
 
     try:
-      stopwords = set([word.strip() for word in open(args.stopwords).readlines()])
+      stopwords = set([normalize(word.strip()) for word in open(args.stopwords).readlines()])
     except:
       stopwords = set()
       logging.warning(" Failed to load stopwords, training without.")
@@ -116,7 +119,7 @@ def main():
 
     logging.info(" Alt rouge validation is set to: %s" % args.alt_rouge)
    
-    model = MRTModel(ref_dicts, pretrained_model, scorer=scorer, stopwords=stopwords)
+    model = MRTModel(ref_dicts, pretrained_model, scorer=scorer, stopwords=stopwords, alpha=args.alpha)
 
     logging.info(" Initializing vocabulary and embeddings.")
     embedding_context = nnsum.io.initialize_embedding_context(
@@ -158,7 +161,7 @@ def main():
     best_rouge = 0
     best_epoch = None
 
-    optim = torch.optim.Adam(model.parameters(), lr=.0001) 
+    optim = torch.optim.Adam(model.parameters(), lr=.0001, weight_decay=0.000001)
 
     start_time = datetime.datetime.utcnow()
     logging.info(" Training start time: {}".format(start_time))

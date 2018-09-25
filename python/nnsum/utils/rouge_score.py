@@ -1,3 +1,5 @@
+from nnsum.utils.word_tokenize import tokenize,normalize
+
 class RougeScorer:
 
   def __init__(self, stopwords=set(),word_limit=100):
@@ -10,10 +12,10 @@ class RougeScorer:
   def count_words(self, sen):
     c = 0
     d = dict()
-    tokens = sen.split(" ")
+    tokens = normalize(sen).split(" ")
     for tok in tokens:
+      c += 1
       if tok not in self.stopwords:
-        c += 1
         if tok not in d: 
           d[tok] = 1
         else:
