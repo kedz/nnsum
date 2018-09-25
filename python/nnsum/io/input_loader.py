@@ -88,6 +88,7 @@ def load_sds_inputs(inputs_path, vocab, sent_limit=None):
     
 def load_sds_labels(path, sent_limit=None):
 
+    label_scores = []
     labels = []
     num_sentences = []
     ids = []
@@ -105,6 +106,7 @@ def load_sds_labels(path, sent_limit=None):
             ids.append(example["id"])
             labels.append(doc_labels)
             num_sentences.append(len(doc_labels))
+            label_scores.append(example["label_scores"])
 
     num_sentences = torch.LongTensor(num_sentences)
     max_sents = int(num_sentences.max())
@@ -124,7 +126,8 @@ def load_sds_labels(path, sent_limit=None):
     logging.info(" {} extract labels ({:6.2f}%)".format(
         tot_extracts, 100 * tot_extracts / tot_sentences))
 
-    return {"ids": ids, "labels": labels, "num_sentences": num_sentences}
+    return {"ids": ids, "labels": labels, "num_sentences": num_sentences,
+           "label_scores": label_scores}
 
 
 def make_sds_dataset(inputs_path, labels_path, vocab, batch_size=32, gpu=-1,
@@ -149,8 +152,8 @@ def make_sds_dataset(inputs_path, labels_path, vocab, batch_size=32, gpu=-1,
         ["targets", "targets"],
         ["metadata", [["id", "id"], 
                       ["texts","texts"], 
-                      ["sentence_lengths", "pretty_sentence_lengths"]]]
-    ]
+                      ["sentence_lengths", "pretty_sentence_lengths"],
+                      ["label_scores", "label_scores"]]]]
 
     dataset = Dataset(
         (inputs_data["tokens"], inputs_data["num_tokens"], "tokens"),
@@ -162,6 +165,7 @@ def make_sds_dataset(inputs_path, labels_path, vocab, batch_size=32, gpu=-1,
         (inputs_data["ids"], "id"),
         (inputs_data["texts"], "texts"),
         (inputs_data["pretty_sentence_lengths"], "pretty_sentence_lengths"),
+        (labels_data["label_scores"], "label_scores"),
         batch_size=batch_size,
         gpu=gpu,
         lengths=inputs_data["num_sentences"],
