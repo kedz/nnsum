@@ -11,6 +11,7 @@ import datetime
 import logging
 import json
 import random
+import pathlib
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -21,10 +22,10 @@ def check_dir(path):
 
 def main():
     parser = argparse.ArgumentParser("Train a seq2seq extractive summarizer.")
-    parser.add_argument("--train-inputs", type=str, required=True)
-    parser.add_argument("--train-labels", type=str, required=True)
-    parser.add_argument("--valid-inputs", type=str, required=True)
-    parser.add_argument("--valid-labels", type=str, required=True)
+    parser.add_argument("--train-inputs", type=pathlib.Path, required=True)
+    parser.add_argument("--train-labels", type=pathlib.Path, required=True)
+    parser.add_argument("--valid-inputs", type=pathlib.Path, required=True)
+    parser.add_argument("--valid-labels", type=pathlib.Path, required=True)
     parser.add_argument("--valid-refs", type=str, required=True)
 
     # Output File Locations
@@ -68,18 +69,31 @@ def main():
         filter_pretrained=args.filter_pretrained)
 
     logging.info(" Loading training data.")
-    train_data = nnsum.io.make_sds_dataset(
-        args.train_inputs, args.train_labels, embedding_context.vocab,
-        batch_size=args.batch_size,
-        sent_limit=args.sent_limit,
-        gpu=args.gpu)
+
+    train_data = nnsum.data.SingleDocumentDataset(
+        embedding_context.vocab, args.train_inputs, 
+        labels_dir=args.train_labels, sentence_limit=args.sent_limit)
+    train_dataloader = train_data.dataloader(batch_size=args.batch_size)
 
     logging.info(" Loading validation data.")
-    valid_data = nnsum.io.make_sds_dataset(
-        args.valid_inputs, args.valid_labels, embedding_context.vocab,
-        batch_size=args.batch_size,
-        sent_limit=args.sent_limit,
-        gpu=args.gpu)
+    valid_data = nnsum.data.SingleDocumentDataset(
+        embedding_context.vocab, args.valid_inputs, 
+        labels_dir=args.valid_labels, sentence_limit=args.sent_limit)
+    valid_dataloader = valid_data.dataloader(batch_size=args.batch_size)
+
+
+
+#    train_data = nnsum.io.make_sds_dataset(
+#        args.train_inputs, args.train_labels, embedding_context.vocab,
+#        batch_size=args.batch_size,
+#        sent_limit=args.sent_limit,
+#        gpu=args.gpu)
+#
+#    valid_data = nnsum.io.make_sds_dataset(
+#        args.valid_inputs, args.valid_labels, embedding_context.vocab,
+#        batch_size=args.batch_size,
+#        sent_limit=args.sent_limit,
+#        gpu=args.gpu)
     
     if args.weighted:
         weight = nnsum.trainer.compute_class_weights(train_data)
@@ -127,7 +141,7 @@ def main():
      
         train_start_time = datetime.datetime.utcnow()
         train_xent = nnsum.trainer.train_epoch(
-            optim, model, train_data, pos_weight=weight)
+            optim, model, train_dataloader, pos_weight=weight)
         train_xents.append(train_xent)
         train_epoch_time = datetime.datetime.utcnow() - train_start_time
         train_times.append(train_epoch_time)
@@ -136,7 +150,7 @@ def main():
 
         valid_start_time = datetime.datetime.utcnow()
         valid_result = nnsum.trainer.validation_epoch(
-            model, valid_data, args.valid_refs, pos_weight=weight,
+            model, valid_dataloader, args.valid_refs, pos_weight=weight,
             remove_stopwords=args.remove_stopwords, 
             summary_length=args.summary_length)
         valid_results.append(valid_result)

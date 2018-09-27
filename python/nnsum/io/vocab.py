@@ -7,6 +7,18 @@ class Vocab(object):
         self._pad_idx = self._tokens2index.get(pad, None)
         self._unk_idx = self._tokens2index.get(unk, None)
 
+    @staticmethod
+    def from_word_list(word_list, pad="_PAD_", unk="_UNK_"):
+
+        if not unk is None:
+            word_list = [unk] + word_list
+        
+        if not pad is None:
+            word_list = [pad] + word_list
+
+        word2index = {w: i for i, w in enumerate(word_list)}
+        return Vocab(word_list, word2index, pad=pad, unk=unk)
+
     def index(self, token):
         index = self._tokens2index.get(token, self._unk_idx)
         if index is None:

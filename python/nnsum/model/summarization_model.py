@@ -12,7 +12,7 @@ class SummarizationModel(nn.Module):
         self.sentence_encoder = sentence_encoder
         self.sentence_extractor = sentence_extractor
 
-    def prepare_input_(self, inputs):
+    def _prepare_input(self, inputs):
         batch_size = inputs.tokens.size(0)
         sent_size = inputs.num_sentences.data.max()
         word_size = inputs.sentence_lengths.data.max()
@@ -27,9 +27,9 @@ class SummarizationModel(nn.Module):
                 tokens[b, s, :length].copy_(inputs.tokens.data[b,start:stop])
                 start += length
  
-        return Variable(tokens)
+        return tokens
 
-    def sort_sentences_(self, og_input, og_wc):
+    def _sort_sentences(self, og_input, og_wc):
 
         bs = og_input.size(0)
         ds = og_input.size(1)
@@ -50,35 +50,59 @@ class SummarizationModel(nn.Module):
         inv_order = Variable(inv_order.data)
         return srt_inp, srt_wc, inv_order
 
-    def forward(self, inputs, decoder_supervision=None, mask_logits=False,
-                return_attention=False):
+    def _sort_and_encode(self, documents, document_lengths, sentence_lengths):
 
-        tokens = self.prepare_input_(inputs)
-        batch_size, doc_size, sent_size = tokens.size()
+        batch_size, doc_size, sent_size = documents.size()
+
+        documents_srt, sentence_lengths_srt, inv_order = self._sort_sentences(
+            documents, sentence_lengths) 
+
+        token_embeddings_srt = self.embeddings(documents_srt)
+
+        sentence_embeddings_srt = self.sentence_encoder(
+            token_embeddings_srt, sentence_lengths_srt)
+
+        sentence_embeddings = sentence_embeddings_srt[inv_order].view(
+            batch_size, doc_size, -1)
+
+        return sentence_embeddings
+
+    def _encode(self, documents, document_lengths, sentence_lengths):
+       
+        token_embeddings = self.embeddings(documents)
+
+        sentence_embeddings = self.sentence_encoder(
+            token_embeddings, sentence_lengths)
+
+        return sentence_embeddings
+
+    def encode(self, input, mask=None):
 
         if self.sentence_encoder.needs_sorted_sentences:
-            tokens_srt, word_count_srt, inv_order = self.sort_sentences_(
-                tokens, inputs.word_count) 
-            token_embeddings_srt = self.embeddings(tokens_srt)
-            sentence_embeddings_srt = self.sentence_encoder(
-                token_embeddings_srt, word_count_srt, inputs)
-
-            sentence_embeddings_flat = sentence_embeddings_srt[inv_order]
-            sentence_embeddings = sentence_embeddings_flat.view(
-                batch_size, doc_size, -1)
-
-            mask = tokens.data[:,:,:1].eq(0).repeat(
-                1, 1, sentence_embeddings.size(2))
-            sentence_embeddings.data.masked_fill_(mask, 0)
-
+            encoded_document = self._sort_and_encode(
+                input.document, input.num_sentences, input.sentence_lengths)
         else:
-            token_embeddings = self.embeddings(tokens)
-            sentence_embeddings = self.sentence_encoder(
-                token_embeddings, inputs.sentence_lengths, inputs)
+            encoded_document = self._encode(
+                input.document, input.num_sentences, input.sentence_lengths)
+
+        if mask is not None:
+            encoded_document.data.masked_fill_(mask.unsqueeze(2), 0)
+
+        return encoded_document
+
+    def forward(self, input, decoder_supervision=None, mask_logits=False,
+                return_attention=False):
+
+        if not self.embeddings.vocab.pad_index is None:
+            mask = input.document[:,:,0].eq(self.embeddings.vocab.pad_index)
+        else:
+            mask = None
+
+        encoded_document = self.encode(input, mask=mask)
 
         logits_and_attention = self.sentence_extractor(
-            sentence_embeddings,
-            inputs.num_sentences, 
+            encoded_document,
+            input.num_sentences, 
             targets=decoder_supervision)
 
         if isinstance(logits_and_attention, (list, tuple)):
@@ -87,8 +111,7 @@ class SummarizationModel(nn.Module):
             logits = logits_and_attention
             attention = None
 
-        if mask_logits:
-            mask = tokens.data[:,:,0].eq(0)
+        if mask_logits and mask is not None:
             logits.data.masked_fill_(mask, float("-inf"))
 
         if return_attention:

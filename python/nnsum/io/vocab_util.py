@@ -3,16 +3,33 @@ from .input_loader import sds_token_iter
 from ..module import EmbeddingContext
 
 import torch
+import json
 
 import logging
 
+from multiprocessing.pool import Pool
 
-def create_vocab(token_iter, top_k=1000000000, at_least=3, pad="_PAD_", 
-                 unk="_UNK_"):
+def _process_file(path):
+    wc = {}
+    with path.open("r") as fp:
+        for sent in json.loads(fp.read())["inputs"]:
+            for token in sent["tokens"]:
+                token = token.lower()
+                wc[token] = wc.get(token, 0) + 1
+    return wc
+
+
+def create_vocab(inputs_path, top_k=1000000000, at_least=1, pad="_PAD_", 
+                 unk="_UNK_", processes=32):
+
+
 
     word_counts = {}
-    for token in token_iter:
-        word_counts[token] = word_counts.get(token, 0) + 1
+    pool = Pool(processes)
+
+    for wc in pool.imap_unordered(_process_file, inputs_path.glob("*.json")):
+        for k, v in wc.items():
+            word_counts[k] = word_counts.get(k, 0) + v
 
     tokens_counts = sorted(
         word_counts.items(), key=lambda x: x[1], reverse=True)
@@ -119,7 +136,7 @@ def initialize_embedding_context(inputs_path, embedding_size,
     else:
         logging.info(" Creating new embeddings with normal initializaion.")
         vocab = create_vocab(
-            sds_token_iter(inputs_path), at_least=at_least, top_k=top_k)
+            inputs_path, at_least=at_least, top_k=top_k)
         if update_rule != "update-all":
             logging.warn(
                 " Embeddings are randomly initialized but" \

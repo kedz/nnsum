@@ -18,7 +18,7 @@ class CNNSentenceEncoder(nn.Module):
     def size(self):
         return self.output_size_
 
-    def forward(self, inputs, word_count, input_data):
+    def forward(self, inputs, word_count):
         inputs = inputs.unsqueeze(1)
         feature_maps = []
         for filter in self.filters:
@@ -28,6 +28,7 @@ class CNNSentenceEncoder(nn.Module):
         feature_maps = torch.cat(feature_maps, 1).permute(0, 2, 1)
         feature_maps = F.dropout(
             feature_maps, p=self.dropout_, training=self.training)
+
         return feature_maps
 
     @property

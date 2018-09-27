@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import torch.nn.functional as F
 
 import logging
@@ -10,9 +11,12 @@ import rouge_papier
 
 def compute_class_weights(dataset):
     logging.info(" Computing class weights...")
+
+    labels = torch.cat([item.targets for item in dataset], 0)
+
     label_counts = np.array([0, 0])
     labels, counts = np.unique(
-    dataset.targets.numpy(), return_counts=True)
+    labels.numpy(), return_counts=True)
     for label, count in zip(labels, counts):
         label_counts[label] = count
     logging.info(" Counts y=0: {}, y=1 {}".format(*label_counts))
@@ -21,19 +25,19 @@ def compute_class_weights(dataset):
     return weight
 
 
-def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5, 
+def train_epoch(optimizer, model, dataloader, pos_weight=None, grad_clip=5, 
                 tts=True):
     model.train()
     total_xent = 0
     total_els = 0
     
-    max_iters = int(np.ceil(dataset.size / dataset.batch_size))
+    #max_iters = int(np.ceil(dataset.size / dataset.batch_size))
+    max_iters = 9999
     
-    for n_iter, batch in enumerate(dataset.iter_batch(), 1):
+    for n_iter, batch in enumerate(dataloader, 1):
         optimizer.zero_grad()
-
-                
-        logits = model(batch.inputs, decoder_supervision=batch.targets.float())
+        logits = model(
+            batch, decoder_supervision=batch.targets.float())
         mask = batch.targets.gt(-1).float()
         total_sentences_batch = int(batch.inputs.num_sentences.data.sum())
         
