@@ -20,9 +20,50 @@ def compute_class_weights(dataset):
     logging.info(" Reweighting y=1 by {}\n".format(weight))
     return weight
 
+def compute_loss(out, batch, mask, raml, mrt):
+   
+   if mrt:
+     return out
+
+   # in case of raml we need to explode the loss
+   # for all the label_scores
+   if raml:
+     targets = batch.targets
+     label_scores = batch.metadata.label_scores
+     batch_size = len(label_scores)
+     sample_size = len(label_scores[0])
+     seq_size = len(label_scores[0][0])
+
+     loss_list = []
+     totals = [0.0]*batch_size
+     for i in range(sample_size):
+       targets = torch.tensor(batch_size, seq_size).float().fill_(0)
+       for b in range(batch_size):
+         targets[b] = torch.tensor(label_scores[b][i]["labels"]).float()
+         totals[b] += label_scores[b][i]["score"]
+       l = F.binary_cross_entropy_with_logits(
+            out, targets,
+            weight=mask,
+            reduction='none')
+       lost_list.append(l)
+
+     # weight the losses and sum to get one number to perform
+     # gradient decent on
+     for i in range(sample_size):
+       for b in range(batch_size)
+         score = label_scores[b][i]["score"]
+         loss_list[i][b] *= score / totals[b]
+     
+     return sum(loss_list).sum(1).sum(0)
+   else:
+     print("DEBUG: targets: %s" % str(batch.targets.float().size()))
+     return F.binary_cross_entropy_with_logits(
+            out, batch.targets.float(),
+            weight=mask,
+            reduction='sum')
 
 def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5, 
-                tts=True, mrt=False):
+                tts=True, mrt=False, raml=False):
     model.train()
     total_xent = 0
     total_els = 0
@@ -39,10 +80,7 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
         if pos_weight is not None:
             mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
 
-        loss = out if mrt else F.binary_cross_entropy_with_logits(
-            out, batch.targets.float(),
-            weight=mask, 
-            reduction='sum')
+        loss = compute_loss(out, batch, mask, raml, mrt)
 
         avg_loss = loss if mrt else loss / float(total_sentences_batch)
         avg_loss.backward()
