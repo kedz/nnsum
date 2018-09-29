@@ -1,5 +1,6 @@
 import numpy as np
 import torch.nn.functional as F
+import torch
 
 import logging
 import sys
@@ -28,35 +29,37 @@ def compute_loss(out, batch, mask, raml, mrt):
    # in case of raml we need to explode the loss
    # for all the label_scores
    if raml:
-     targets = batch.targets
      label_scores = batch.metadata.label_scores
      batch_size = len(label_scores)
      sample_size = len(label_scores[0])
-     seq_size = len(label_scores[0][0])
+     seq_size = batch.targets.size(1)
 
      loss_list = []
      totals = [0.0]*batch_size
      for i in range(sample_size):
-       targets = torch.tensor(batch_size, seq_size).float().fill_(0)
+       targets = batch.targets.new(batch.targets).float().fill_(0)
        for b in range(batch_size):
-         targets[b] = torch.tensor(label_scores[b][i]["labels"]).float()
+         #print("DEBUG: i %d, b %d, label_scores (%d,%d)" % (i, b, len(label_scores), len(label_scores[b])))
+         labels = label_scores[b][i]["labels"]
+         labels = labels + [0]*(seq_size-len(labels))
+         assert(seq_size==len(labels))
+         targets[b] = batch.targets.new(labels).float()
          totals[b] += label_scores[b][i]["score"]
        l = F.binary_cross_entropy_with_logits(
             out, targets,
             weight=mask,
             reduction='none')
-       lost_list.append(l)
+       loss_list.append(l)
 
      # weight the losses and sum to get one number to perform
      # gradient decent on
      for i in range(sample_size):
-       for b in range(batch_size)
+       for b in range(batch_size):
          score = label_scores[b][i]["score"]
          loss_list[i][b] *= score / totals[b]
      
      return sum(loss_list).sum(1).sum(0)
    else:
-     print("DEBUG: targets: %s" % str(batch.targets.float().size()))
      return F.binary_cross_entropy_with_logits(
             out, batch.targets.float(),
             weight=mask,
@@ -67,7 +70,9 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
     model.train()
     total_xent = 0
     total_els = 0
-    
+   
+    #print("DEBUG: raml is set to %s" % raml)
+ 
     max_iters = int(np.ceil(dataset.size / dataset.batch_size))
     
     for n_iter, batch in enumerate(dataset.iter_batch(), 1):
@@ -80,7 +85,7 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
         if pos_weight is not None:
             mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
 
-        loss = compute_loss(out, batch, mask, raml, mrt)
+        loss = compute_loss(out, batch, mask, raml=raml, mrt=mrt)
 
         avg_loss = loss if mrt else loss / float(total_sentences_batch)
         avg_loss.backward()
@@ -108,7 +113,8 @@ def train_epoch(optimizer, model, dataset, pos_weight=None, grad_clip=5,
     return total_xent / total_els
 
 def validation_epoch(model, dataset, reference_dir, pos_weight=None, 
-                     remove_stopwords=True, summary_length=100, tts=True, mrt=False, alt_rouge=None):
+                     remove_stopwords=True, summary_length=100, 
+                     tts=True, mrt=False, alt_rouge=None, raml=False):
     model.eval()
     total_xent = 0
     total_els = 0
@@ -124,10 +130,7 @@ def validation_epoch(model, dataset, reference_dir, pos_weight=None,
         if pos_weight is not None:
             mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
 
-        loss = out if mrt else F.binary_cross_entropy_with_logits(
-            out, batch.targets.float(),
-            weight=mask, 
-            reduction='sum')
+        loss = compute_loss(out, batch, mask, raml=raml, mrt=mrt)
 
         avg_loss = loss if mrt else loss / float(total_sentences_batch)
 

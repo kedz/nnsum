@@ -38,6 +38,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--weighted", default=False, action="store_true")
     parser.add_argument("--sent-limit", default=None, type=int)
+    parser.add_argument("--raml", default=False, action="store_true")
 
     # ROUGE Parameters
     parser.add_argument(
@@ -107,6 +108,8 @@ def main():
         logging.info(" Placing model on device: {}".format(args.gpu))
         model.cuda(args.gpu)
 
+    logging.info(" This model will be trained with raml=%s" % args.raml)
+
     model.initialize_parameters(logger=logging.getLogger())
 
     train_times = []
@@ -127,7 +130,7 @@ def main():
      
         train_start_time = datetime.datetime.utcnow()
         train_xent = nnsum.trainer.train_epoch(
-            optim, model, train_data, pos_weight=weight)
+            optim, model, train_data, pos_weight=weight, raml=args.raml)
         train_xents.append(train_xent)
         train_epoch_time = datetime.datetime.utcnow() - train_start_time
         train_times.append(train_epoch_time)
@@ -138,7 +141,7 @@ def main():
         valid_result = nnsum.trainer.validation_epoch(
             model, valid_data, args.valid_refs, pos_weight=weight,
             remove_stopwords=args.remove_stopwords, 
-            summary_length=args.summary_length)
+            summary_length=args.summary_length, raml=args.raml)
         valid_results.append(valid_result)
         valid_epoch_time = datetime.datetime.utcnow() - valid_start_time
         valid_times.append(valid_epoch_time)
