@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import argparse
+
 
 class RNNSentenceEncoder(nn.Module):
     def __init__(self, input_size, hidden_size, dropout=0.0, 
@@ -30,6 +32,21 @@ class RNNSentenceEncoder(nn.Module):
             self.size_ = hidden_size
 
         self.dropout_ = dropout
+
+    @staticmethod
+    def argparser():
+        parser = argparse.ArgumentParser(usage=argparse.SUPPRESS)
+        parser.add_argument(
+            "--hidden-size", default=300, type=int)
+        parser.add_argument(
+            "--bidirectional", action="store_true", default=False)
+        parser.add_argument(
+            "--dropout", default=.25, type=float)
+        parser.add_argument(
+            "--num-layers", default=1, type=int)
+        parser.add_argument("--cell", choices=["rnn", "gru", "lstm"],
+                            default="gru", type=str)
+        return parser
 
     @property
     def size(self):
@@ -70,3 +87,25 @@ class RNNSentenceEncoder(nn.Module):
             encoder_state, p=self.dropout, training=self.training)
 
         return encoder_state
+
+    def initialize_parameters(self, logger=None):
+        if logger:
+            logger.info(" RNNSentenceEncoder initialization started.")
+        for name, p in self.named_parameters():
+            if "weight" in name:
+                if logger:
+                    logger.info(" {} ({}): Xavier normal init.".format(
+                        name, ",".join([str(x) for x in p.size()])))
+                nn.init.xavier_normal_(p)    
+            elif "bias" in name:
+                if logger:
+                    logger.info(" {} ({}): constant (0) init.".format(
+                        name, ",".join([str(x) for x in p.size()])))
+                nn.init.constant_(p, 0)    
+            else:
+                if logger:
+                    logger.info(" {} ({}): random normal init.".format(
+                        name, ",".join([str(x) for x in p.size()])))
+                nn.init.normal_(p)    
+        if logger:
+            logger.info(" RNNSentenceEncoder initialization finished.")

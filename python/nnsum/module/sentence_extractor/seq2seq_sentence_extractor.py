@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from ..attention import (NoAttention, BiLinearSoftmaxAttention, 
                          BiLinearSigmoidAttention)
 
+import argparse
+
 
 class Seq2SeqSentenceExtractor(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=1, 
@@ -69,6 +71,26 @@ class Seq2SeqSentenceExtractor(nn.Module):
             inp_size = out_size 
         mlp.append(nn.Linear(inp_size, 1))
         self.mlp = nn.Sequential(*mlp)
+
+    @staticmethod
+    def argparser():
+        parser = argparse.ArgumentParser(usage=argparse.SUPPRESS)
+        parser.add_argument(
+            "--hidden-size", default=100, type=int)
+        parser.add_argument(
+            "--bidirectional", action="store_true", default=False)
+        parser.add_argument(
+            "--dropout", default=.25, type=float)
+        parser.add_argument(
+            "--num-layers", default=1, type=int)
+        parser.add_argument("--cell", choices=["rnn", "gru", "lstm"],
+                            default="gru", type=str)
+        parser.add_argument(
+            "--mlp-layers", default=[100], type=int, nargs="+")
+        parser.add_argument(
+            "--mlp-dropouts", default=[.25], type=float, nargs="+")
+
+        return parser
 
     def _start_decoder(self, batch_size, rnn_state):
         start_emb = self.decoder_start.view(1, 1, -1).repeat(1, batch_size, 1)

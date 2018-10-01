@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import argparse
+
 
 class EmbeddingContext(nn.Module):
     
@@ -50,6 +52,28 @@ class EmbeddingContext(nn.Module):
 
         if update_rule == "fix-all":
             self.embeddings.weight.requires_grad = False
+
+
+    @staticmethod
+    def argparser():
+        parser = argparse.ArgumentParser(usage=argparse.SUPPRESS)
+        parser.add_argument("--embedding-size", type=int, default=200,
+                            required=False)
+        parser.add_argument(
+            "--pretrained-embeddings", type=str, required=False,
+            default=None)
+        parser.add_argument("--top-k", type=int, required=False, default=None)
+        parser.add_argument("--at-least", type=int, required=False, default=1)
+        parser.add_argument(
+            "--word-dropout", type=float, required=False, default=0.0)
+        parser.add_argument(
+            "--embedding-dropout", type=float, required=False, default=0.25)
+        parser.add_argument(
+            "--update-rule", type=str, required=False, default="fix-all",
+            choices=["update-all", "fix-all"],)
+        parser.add_argument(
+            "--filter-pretrained", action="store_true", default=False)
+        return parser
 
     @property
     def vocab(self):

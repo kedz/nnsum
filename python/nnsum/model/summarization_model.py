@@ -119,10 +119,8 @@ class SummarizationModel(nn.Module):
         else:
             return logits 
 
-    def predict(self, inputs, metadata, return_indices=False, 
-                decoder_supervision=None, max_length=100):
-        logits = self.forward(inputs, decoder_supervision=decoder_supervision,
-                              mask_logits=True)
+    def predict(self, input, return_indices=False, max_length=100):
+        logits = self.forward(input, mask_logits=True)
         batch_size = logits.size(0)
         _, indices = torch.sort(logits, 1, descending=True)
 
@@ -133,11 +131,11 @@ class SummarizationModel(nn.Module):
             text = []
             pos = [] 
             for i in indices.data[b]:
-                if i >= inputs.num_sentences.data[b]:
+                if i >= input.num_sentences.data[b]:
                     break
-                text.append(metadata.texts[b][i])
+                text.append(input.sentence_texts[b][i])
                 pos.append(int(i))
-                wc += metadata.sentence_lengths[b][i]
+                wc += input.pretty_sentence_lengths[b][i]
 
                 if wc > max_length:
                     break

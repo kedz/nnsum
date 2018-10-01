@@ -2,11 +2,22 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from ignite.engine import Engine, Events
+from nnsum.metrics import PerlRouge
+#from ignite.metrics import Metric
+
+import tempfile
+
+
+
 import logging
 import sys
 import os
 from collections import defaultdict
 import rouge_papier
+
+
+
 
 
 def compute_class_weights(dataset):
@@ -25,21 +36,122 @@ def compute_class_weights(dataset):
     return weight
 
 
+def label_mle_trainer(model, optimizer, train_dataloader,
+                      validation_dataloader, max_epochs=10, pos_weight=None,
+                      grad_clip=5):
+
+    trainer = create_trainer(model, optimizer, pos_weight=pos_weight, 
+                             grad_clip=grad_clip)
+
+    evaluator = create_evaluator(model, validation_dataloader, 
+                                 summary_length=100, 
+                                 delete_temp_files=True)
+
+    PerlRouge().attach(evaluator, "rouge")
+
+
+    @trainer.on(Events.EPOCH_COMPLETED)
+    def log_validation_results(trainer):
+        evaluator.run(validation_dataloader)
+        
+        metrics = evaluator.state.metrics
+        #print("Validation Results - Epoch: {}  Avg accuracy: {:.2f} Avg loss: {:.2f}"
+        #                          .format(trainer.state.epoch, metrics['accuracy'], metrics['nll']))
+
+        print("Rouge1={}".format(metrics["rouge1"]))
+    
+    trainer.run(train_dataloader, max_epochs=max_epochs)
+
+def create_trainer(model, optimizer, pos_weight=None, grad_clip=5):
+
+    def _update(engine, batch):
+        optimizer.zero_grad()
+        logits = model(
+            batch, decoder_supervision=batch.targets.float())
+        mask = batch.targets.gt(-1).float()
+        total_sentences_batch = int(batch.num_sentences.data.sum())
+        
+        if pos_weight is not None:
+            mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
+
+        bce = F.binary_cross_entropy_with_logits(
+            logits, batch.targets.float(),
+            weight=mask, 
+            reduction='sum')
+
+        avg_bce = bce / float(total_sentences_batch)
+        avg_bce.backward()
+        for param in model.parameters():
+            param.grad.data.clamp_(-grad_clip, grad_clip)
+        optimizer.step()
+
+        return avg_bce.item()
+
+    trainer = Engine(_update)
+
+    @trainer.on(Events.ITERATION_COMPLETED)
+    def log_training_loss(trainer):
+        print("Epoch[{}] Train X-Entropy: {:.3f}".format(
+            trainer.state.epoch, trainer.state.output), end="\r", flush=True)
+    
+    return trainer
+
+def create_evaluator(model, dataloader, summary_length=100, 
+                     delete_temp_files=True):
+
+    def _evaluator(engine, batch):
+
+        model.eval()
+        with torch.no_grad():
+            path_data = []
+                
+            texts = model.predict(batch, max_length=summary_length)
+
+            for text, ref_paths in zip(texts, batch.reference_paths):
+                
+                summary = "\n".join(text)                
+
+                with tempfile.NamedTemporaryFile(
+                        mode="w", delete=False) as fp:
+                    fp.write(summary)
+
+                path_data.append([fp.name, [str(x) for x in ref_paths]])
+
+        return path_data
+
+    evaluator = Engine(_evaluator)
+
+    return evaluator
+
+#            config_text = rouge_papier.util.make_simple_config_text(path_data)
+#            config_path = manager.create_temp_file(config_text)
+#            df = rouge_papier.compute_rouge(
+#                config_path, max_ngram=2, lcs=False, 
+#                remove_stopwords=remove_stopwords,
+#                length=summary_length)
+#            print(df)
+#            exit()
+#            return df[-1:], hist
+
+
+
+    return Engine(_evaluator)
+
+
 def train_epoch(optimizer, model, dataloader, pos_weight=None, grad_clip=5, 
                 tts=True):
     model.train()
     total_xent = 0
     total_els = 0
-    
-    #max_iters = int(np.ceil(dataset.size / dataset.batch_size))
-    max_iters = 9999
+   
+    max_iters = len(dataloader)
     
     for n_iter, batch in enumerate(dataloader, 1):
         optimizer.zero_grad()
         logits = model(
             batch, decoder_supervision=batch.targets.float())
         mask = batch.targets.gt(-1).float()
-        total_sentences_batch = int(batch.inputs.num_sentences.data.sum())
+        total_sentences_batch = int(batch.num_sentences.data.sum())
         
         if pos_weight is not None:
             mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
@@ -76,19 +188,19 @@ def train_epoch(optimizer, model, dataloader, pos_weight=None, grad_clip=5,
 
     return total_xent / total_els
 
-def validation_epoch(model, dataset, reference_dir, pos_weight=None, 
+def validation_epoch(model, dataloader, pos_weight=None, 
                      remove_stopwords=True, summary_length=100, tts=True):
     model.eval()
     total_xent = 0
     total_els = 0
     
-    max_iters = int(np.ceil(dataset.size / dataset.batch_size))
+    max_iters = len(dataloader)
     
-    for n_iter, batch in enumerate(dataset.iter_batch(), 1):
+    for n_iter, batch in enumerate(dataloader, 1):
         
-        logits = model(batch.inputs)
+        logits = model(batch)
         mask = batch.targets.gt(-1).float()
-        total_sentences_batch = int(batch.inputs.num_sentences.data.sum())
+        total_sentences_batch = int(batch.num_sentences.data.sum())
         
         if pos_weight is not None:
             mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
@@ -119,44 +231,35 @@ def validation_epoch(model, dataset, reference_dir, pos_weight=None,
         print("")
 
     rouge_df, hist = compute_rouge(
-        model, dataset, reference_dir, remove_stopwords=remove_stopwords,
+        model, dataloader, remove_stopwords=remove_stopwords,
         summary_length=summary_length)
     r1, r2 = rouge_df.values[0].tolist()    
    
     avg_xent = total_xent / total_els 
     return avg_xent, r1 * 100, r2 * 100
 
-def collect_reference_paths(reference_dir):
-    ids2refs = defaultdict(list)
-    for filename in os.listdir(reference_dir):
-        id = filename.rsplit(".", 2)[0]
-        ids2refs[id].append(os.path.join(reference_dir, filename))
-    return ids2refs
-
-def compute_rouge(model, dataset, reference_dir, remove_stopwords=True,
+def compute_rouge(model, dataloader, remove_stopwords=True,
                   summary_length=100):
 
     model.eval()
 
     hist = {}
-    ids2refs = collect_reference_paths(reference_dir)
-
     with rouge_papier.util.TempFileManager() as manager:
 
         path_data = []
-        for batch in dataset.iter_batch():
+        for batch in dataloader:
             texts, positions = model.predict(
-                batch.inputs, batch.metadata, return_indices=True,
+                batch, return_indices=True,
                 max_length=summary_length)
             for pos_b in positions:
                 for p in pos_b:
                     hist[p] = hist.get(p, 0) + 1
             for b, text in enumerate(texts):
-                id = batch.metadata.id[b]
+                id = batch.id[b]
                 summary = "\n".join(text)                
                 summary_path = manager.create_temp_file(summary)
-                ref_paths = ids2refs[id]
-                path_data.append([summary_path, ref_paths])
+                path_data.append([summary_path, 
+                                  [str(x) for x in batch.reference_paths[b]]])
 
         config_text = rouge_papier.util.make_simple_config_text(path_data)
         config_path = manager.create_temp_file(config_text)

@@ -1,21 +1,39 @@
-from torch.utils.data import Dataset, DataLoader
 import torch
+from torch.utils.data import Dataset, DataLoader
 
 import ujson as json
-from collections import namedtuple
+from collections import defaultdict
 
 
 class SingleDocumentDataset(Dataset):
 
-    SingleDocumentItem = namedtuple(
-        "SingleDocumentItem", ["id", "document", "targets", "document_length",
-                               "sentence_lengths"])
+    class SingleDocumentItem(object):
+        def __init__(self, id, document, targets, document_length,
+                     sentence_lengths, reference_paths, 
+                     sentence_texts, pretty_sentence_lengths):
+            self.id = id
+            self.document = document
+            self.targets = targets
+            self.document_length = document_length
+            self.sentence_lengths = sentence_lengths
+            self.reference_paths = reference_paths
+            self.sentence_texts = sentence_texts
+            self.pretty_sentence_lengths = pretty_sentence_lengths
 
-    SingleDocumentBatch = namedtuple(
-        "SingleDocumentBatch", ["id", "document", "targets", "num_sentences",
-                                "sentence_lengths"])
+    class SingleDocumentBatch(object):
+        def __init__(self, id, document, targets, num_sentences,
+                     sentence_lengths, reference_paths,
+                     sentence_texts, pretty_sentence_lengths):
+            self.id = id
+            self.document = document
+            self.targets = targets
+            self.num_sentences = num_sentences
+            self.sentence_lengths = sentence_lengths
+            self.reference_paths = reference_paths
+            self.sentence_texts = sentence_texts
+            self.pretty_sentence_lengths = pretty_sentence_lengths
     
-    def __init__(self, vocab, inputs_dir, labels_dir=None, 
+    def __init__(self, vocab, inputs_dir, labels_dir=None, references_dir=None,
                  sentence_limit=None):
 
         self._vocab = vocab
@@ -28,6 +46,14 @@ class SingleDocumentDataset(Dataset):
             self._labels = [path for path in labels_dir.glob("*.json")]
             self._labels.sort()
             assert len(self._labels) == len(self._inputs)
+
+        if references_dir:
+            self._reference_paths = defaultdict(list)
+            for path in references_dir.glob("*"):
+                doc_id = path.stem.rsplit(".", 1)[0]
+                self._reference_paths[doc_id].append(path)
+        else:
+            self._reference_paths = None
 
     @property
     def vocab(self):
@@ -59,6 +85,11 @@ class SingleDocumentDataset(Dataset):
             for t, token in enumerate(sent["tokens"]):
                 document[s, t] = self.vocab.index(token.lower())
         sentence_sizes = torch.LongTensor(sentence_sizes)                
+        sentence_texts = [sent["text"] 
+                          for sent in example["inputs"][:doc_size]]
+        pretty_sentence_lengths = torch.LongTensor(
+            [len(sent["text"].split()) 
+             for sent in example["inputs"][:doc_size]])
 
         if self._labels:
             with self._labels[index].open("r") as fp:
@@ -68,12 +99,20 @@ class SingleDocumentDataset(Dataset):
         else:
             targets = None
 
-        return self.SingleDocumentItem(
-            example["id"], document, targets, doc_size, sentence_sizes)
+        if self._reference_paths:
+            reference_paths = self._reference_paths[example["id"]]
+            if len(reference_paths) == 0:
+                raise Exception("Document {} has no references!".format(
+                    example["id"]))
+        else:
+            reference_paths = None
 
-    def dataloader(self, batch_size=16, shuffle=True, num_workers=0):
+        return self.SingleDocumentItem(
+            example["id"], document, targets, doc_size, sentence_sizes,
+            reference_paths, sentence_texts, pretty_sentence_lengths)
+
+    def dataloader(self, batch_size=16, shuffle=True, num_workers=8, gpu=-1):
         def collate_fn(batch):
-           
             
             document_length = torch.LongTensor(
                 [item.document_length for item in batch])
@@ -95,7 +134,16 @@ class SingleDocumentDataset(Dataset):
             else:
                 targets = None
 
+            if self._reference_paths:
+                reference_paths = []
+            else:
+                reference_paths = None
+
             ids = []
+            sentence_texts = []
+            pretty_sentence_lengths = torch.LongTensor(
+                batch_size, max_doc).fill_(0)
+
             for b, index in enumerate(indices):
                 item = batch[index]
                 ids.append(item.id)
@@ -104,11 +152,24 @@ class SingleDocumentDataset(Dataset):
                 sentence_lengths[b, :doc_size].copy_(
                     item.sentence_lengths)
                 documents[b, :doc_size, :sent_size].copy_(item.document)
+                sentence_texts.append(item.sentence_texts)
+                pretty_sentence_lengths[b, :doc_size].copy_(
+                    item.pretty_sentence_lengths)
+
                 if self._labels:
                     targets[b, :doc_size].copy_(item.targets)
+                if self._reference_paths:
+                    reference_paths.append(item.reference_paths)
+
+            if gpu > -1:
+                documents = documents.cuda(gpu)
+                targets = targets.cuda(gpu)
+                document_length = document_length.cuda(gpu)
+                sentence_lengths = sentence_lengths.cuda(gpu)
 
             batch = self.SingleDocumentBatch(
-                ids, documents, targets, document_length, sentence_lengths)
+                ids, documents, targets, document_length, sentence_lengths,
+                reference_paths, sentence_texts, pretty_sentence_lengths)
             return batch
 
         return DataLoader(self, batch_size=batch_size,

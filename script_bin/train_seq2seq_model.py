@@ -1,24 +1,13 @@
-import nnsum.trainer
-import nnsum.io
-import nnsum.module
-from nnsum.model import Seq2SeqModel
+import argparse
+import pathlib
+import logging
 
 import torch
-
-import os
-import argparse
-import datetime
-import logging
-import json
+import nnsum
 import random
-import pathlib
+
 
 logging.getLogger().setLevel(logging.INFO)
-
-def check_dir(path):
-    dirname = os.path.dirname(path)
-    if dirname != "" and not os.path.exists(dirname):
-        os.makedirs(dirname)
 
 def main():
     parser = argparse.ArgumentParser("Train a seq2seq extractive summarizer.")
@@ -26,7 +15,7 @@ def main():
     parser.add_argument("--train-labels", type=pathlib.Path, required=True)
     parser.add_argument("--valid-inputs", type=pathlib.Path, required=True)
     parser.add_argument("--valid-labels", type=pathlib.Path, required=True)
-    parser.add_argument("--valid-refs", type=str, required=True)
+    parser.add_argument("--valid-refs", type=pathlib.Path, required=True)
 
     # Output File Locations
     parser.add_argument("--results-path", type=str, default=None)
@@ -34,7 +23,7 @@ def main():
 
     # Training Parameters parameters
     parser.add_argument("--seed", default=48929234, type=int)
-    parser.add_argument("--batch-size", default=1, type=int)
+    parser.add_argument("--batch-size", default=32, type=int)
     parser.add_argument("--gpu", default=-1, type=int)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--weighted", default=False, action="store_true")
@@ -47,61 +36,53 @@ def main():
         "--summary-length", default=100, type=int) 
 
     nnsum.module.EmbeddingContext.update_command_line_options(parser)
-    Seq2SeqModel.update_command_line_options(parser)
+    nnsum.model.Seq2SeqModel.update_command_line_options(parser)
 
     args = parser.parse_args()
     random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
  
-    if args.model_path:
-        check_dir(args.model_path)
-    if args.results_path:
-        check_dir(args.results_path)
-
-    logging.info(" Initializing vocabulary and embeddings.")
+    print("Initializing vocabulary and embeddings.")
     embedding_context = nnsum.io.initialize_embedding_context(
-        args.train_inputs, args.embedding_size, at_least=args.at_least,
-        top_k=args.top_k, word_dropout=args.word_dropout,
+        args.train_inputs,
+        args.embedding_size,
+        at_least=args.at_least,
+        top_k=args.top_k,
+        word_dropout=args.word_dropout,
         embedding_dropout=args.embedding_dropout,
         update_rule=args.update_rule,
         embeddings_path=args.pretrained_embeddings,
         filter_pretrained=args.filter_pretrained)
 
-    logging.info(" Loading training data.")
-
+    print("Loading training data.")
     train_data = nnsum.data.SingleDocumentDataset(
-        embedding_context.vocab, args.train_inputs, 
-        labels_dir=args.train_labels, sentence_limit=args.sent_limit)
-    train_dataloader = train_data.dataloader(batch_size=args.batch_size)
+        embedding_context.vocab,
+        args.train_inputs, 
+        labels_dir=args.train_labels, 
+        sentence_limit=args.sent_limit)
+    train_loader = train_data.dataloader(
+        batch_size=args.batch_size,
+        gpu=args.gpu)
 
-    logging.info(" Loading validation data.")
-    valid_data = nnsum.data.SingleDocumentDataset(
-        embedding_context.vocab, args.valid_inputs, 
-        labels_dir=args.valid_labels, sentence_limit=args.sent_limit)
-    valid_dataloader = valid_data.dataloader(batch_size=args.batch_size)
+    print("Loading validation data.")
+    val_data = nnsum.data.SingleDocumentDataset(
+        embedding_context.vocab, 
+        args.valid_inputs, 
+        labels_dir=args.valid_labels, 
+        references_dir=args.valid_refs,
+        sentence_limit=args.sent_limit)
+    val_loader = valid_data.dataloader(
+        batch_size=args.batch_size,
+        gpu=args.gpu)
 
-
-
-#    train_data = nnsum.io.make_sds_dataset(
-#        args.train_inputs, args.train_labels, embedding_context.vocab,
-#        batch_size=args.batch_size,
-#        sent_limit=args.sent_limit,
-#        gpu=args.gpu)
-#
-#    valid_data = nnsum.io.make_sds_dataset(
-#        args.valid_inputs, args.valid_labels, embedding_context.vocab,
-#        batch_size=args.batch_size,
-#        sent_limit=args.sent_limit,
-#        gpu=args.gpu)
-    
     if args.weighted:
         weight = nnsum.trainer.compute_class_weights(train_data)
     else:
         weight = None
 
-    logging.info(" Building model.")
-    model = Seq2SeqModel.model_builder(
+    print("Building model.")
+    model = nnsum.model.Seq2SeqModel.model_builder(
         embedding_context,
         sent_dropout=args.sent_dropout,
         sent_encoder_type=args.sent_encoder,
@@ -118,10 +99,23 @@ def main():
         attention=args.attention)
 
     if args.gpu > -1:
-        logging.info(" Placing model on device: {}".format(args.gpu))
+        print("Placing model on device: {}".format(args.gpu))
         model.cuda(args.gpu)
 
     model.initialize_parameters(logger=logging.getLogger())
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=.0001) 
+
+    nnsum.trainer.labels_mle_trainer(
+        model, optimizer, train_dataloader, valid_dataloader, 
+        pos_weight=weight, max_epochs=args.epochs,
+        summary_length=args.summary_length,
+        remove_stopwords=args.remove_stopwords)
+    
+    
+    exit()
+
+
 
     train_times = []
     valid_times = []
@@ -131,7 +125,14 @@ def main():
     best_rouge = 0
     best_epoch = None
 
-    optim = torch.optim.Adam(model.parameters(), lr=.0001) 
+
+
+    trainer = nnsum.trainer.create_trainer(
+        model, optim, pos_weight=weight)
+
+
+    trainer.run(train_dataloader, max_epochs=args.epochs)
+
 
     start_time = datetime.datetime.utcnow()
     logging.info(" Training start time: {}".format(start_time))
@@ -150,7 +151,7 @@ def main():
 
         valid_start_time = datetime.datetime.utcnow()
         valid_result = nnsum.trainer.validation_epoch(
-            model, valid_dataloader, args.valid_refs, pos_weight=weight,
+            model, valid_dataloader, pos_weight=weight,
             remove_stopwords=args.remove_stopwords, 
             summary_length=args.summary_length)
         valid_results.append(valid_result)

@@ -2,6 +2,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import argparse
+
+
+_desc_message = """
+    Convolutional Sentence Encoder -- sentence embeddings are the output
+    of a convolutional layer applied to a sentence's word embeddings.
+    Output of each convolutional filter is concatenated and fed through a 
+    relu+dropout layer.
+    """
 
 class CNNSentenceEncoder(nn.Module):
     def __init__(self, embedding_size, feature_maps=[50, 50, 100],
@@ -13,6 +22,29 @@ class CNNSentenceEncoder(nn.Module):
              for fm, fw in zip(feature_maps, filter_windows)])
 
         self.output_size_ = sum(feature_maps)
+
+    @staticmethod
+    def argparser():
+        parser = argparse.ArgumentParser(usage=argparse.SUPPRESS)
+        parser.add_argument(
+            "--dropout", type=float, default=.25, required=False,
+            help="Drop probability applied to convolutional output.")
+        parser.add_argument(
+            "--filter-windows", default=[1, 2, 3, 4, 5, 6], type=int, 
+            nargs="+",
+            help="Filter window widths, i.e. size in ngrams of each " \
+                    "convolutional feature window. Number of args must be " \
+                    "the same length as --feature-maps.")
+        parser.add_argument(
+            "--feature-maps", default=[25, 25, 50, 50, 50, 50], 
+            type=int, nargs="+",
+            help="Number of convolutional feature maps. " \
+                 "Number of args must be the same length as " \
+                 "--filter-windows.")
+        return parser
+
+
+
 
     @property
     def size(self):
