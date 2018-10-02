@@ -144,3 +144,26 @@ Sentence embeddings are run through a seq2seq based extractor with attention and
  
 ### SummaRunner Extractor
 `TODO`
+
+# Evaluating a Model
+To get a model's ROUGE scores on the train, validation, or test set use `script_bin/eval_model.py`.
+
+E.g.:
+```
+python eval_model.py \
+  --inputs PATH/TO/INPUTS/DIR \
+  --refs PATH/TO/REFERENCE/DIR \
+  --model PATH/TO/MODEL \
+  --results PATH/TO/WRITE/RESULTS \
+  --summary-length 100 
+```
+Eval script parameters are described below:
+ - `--batch-size BATCH_SIZE` Batch size to use when generating summaries. (Default: 32)
+ - `--gpu GPU` Which gpu device to use. When GPU == -1, use cpu. (Default: -1)
+ - `--sentence-limit LIMIT` Only read in the first LIMIT sentences in the document to be summarized. By default there is no limit. (Default: None)
+ - `--summary-length LENGTH` The summary word length to use in ROUGE evauation. (Default: 100)
+ - `--remove-stopwords` When flag is true ROUGE evaluation is done with stopwords removed.
+ - `--inputs PATH` Path to input data directory. (required)
+ - `--refs PATH` Path to human reference summary directory. (required) 
+ - `--model PATH` Path to saved model to evaluate. (required)
+ - `--results PATH` Path to write results json. Stores per document ROUGE scores and dataset average scores. (optional)
