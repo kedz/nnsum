@@ -14,7 +14,7 @@ The DUC and NYT datasets must be obtained separately before calling the preproce
 1. Install pytorch using pip or conda.
 2. run:
 ```bash 
-git clone this repository
+git clone https://github.com/kedz/nnsum.git
 cd nnsum
 python setup.py install
 ```
