@@ -18,7 +18,7 @@ git clone this repository
 cd nnsum
 python setup.py install
 ```
-3. Get the data: link_to_data
+3. Get the data: `TODO link_to_data`
 
 # Training A Model
 
@@ -31,6 +31,25 @@ python script_bin/train_model.py \
 ```
 Every model has a set of word embeddings, a sentence encoder, and a sentence extractor. 
 Each argument section allows you to pick an architecture/options for that component.
+For the most part, defaults match the paper's primary evaluation settings. 
+For example, to train the CNN encoder with Seq2Seq extractor on gpu 0, run the following:
+
+```
+python ../script_bin/train_model.py \
+    --trainer --train-inputs PATH/TO/INPUTS/TRAIN/DIR \
+              --train-labels PATH/TO/LABELS/TRAIN/DIR \
+              --valid-inputs PATH/TO/INPUTS/VALID/DIR \
+              --valid-labels PATH/TO/LABELS/VALID/DIR \
+              --valid-refs PATH/TO/HUMAN/REFERENCE/VALID/DIR \
+              --weighted \
+              --gpu 0 \
+              --model PATH/TO/SAVE/MODEL \
+              --results PATH/TO/SAVE/VALIDATION/SCORES \
+              --seed 12345678 \
+    --emb --pretrained-embeddings PATH/TO/200/DIM/GLOVE \
+    --enc avg \
+    --ext s2s --bidirectional 
+```
 
 ## Trainer Arguments
 These arguments set the data to train on, batch sizes, training epochs, etc.
@@ -91,7 +110,37 @@ The output size is the sum of the `--feature-maps` argument.
              
 
 ## Extractor Arguments
-
-
-
-
+The extractor arguments select for one of four sentence extractor architectures: `rnn`, `s2s`, `cl`, or `sr`, and their various parameters e.g. `--ext cl` or `--enc s2s S2S_ARGUMENTS`. 
+The sentence extractor takes an arbitrarily long sequence of sentence embeddings and predicts whether each sentence should be included in the summary.
+Below we describe the options for each architecture.
+### RNN Extractor
+Sentence embeddings are run through an RNN and then fed into a multi-layer perceptron MLP to predict sentence extraction.
+ - `--hidden-size SIZE` Size of the RNN output layer/hidden layer. (Default: 300)
+ - `--bidirectional` When flag is set, use a bi-directional RNN.
+ - `--rnn-dropout PROB` Drop propability applied to output layers of the RNN. (Default: .25)
+ - `--num-layers NUM` Number of layers in the RNN. (Default: 1)
+ - `--cell CELL` RNN cell type to use. Options are `rnn`, `gru`, or `lstm`. (Default: `gru`)
+ - `--mlp-layers SIZE [SIZE ...]` A list of sizes of the hidden layers in the MLP. Must be the same length as `--mlp-dropouts`. (Default: `100`)
+ - `--mlp-dropouts PROB [PROBS ...]` A list the MLP hidden layer dropout probabilities. Must be the same length as `--mlp-layers`. (Default: .25)
+### Seq2Seq Extractor
+Sentence embeddings are run through a seq2seq based extractor with attention and MLP layer for predicting sentence extraction.
+ - `--hidden-size SIZE` Size of the RNN output layer/hidden layer. (Default: 300)
+ - `--bidirectional` When flag is set, use a bi-directional RNN.
+ - `--rnn-dropout PROB` Drop propability applied to output layers of the RNN. (Default: .25)
+ - `--num-layers NUM` Number of layers in the RNN. (Default: 1)
+ - `--cell CELL` RNN cell type to use. Options are `rnn`, `gru`, or `lstm`. (Default: `gru`)
+ - `--mlp-layers SIZE [SIZE ...]` A list of sizes of the hidden layers in the MLP. Must be the same length as `--mlp-dropouts`. (Default: `100`)
+ - `--mlp-dropouts PROB [PROBS ...]` A list the MLP hidden layer dropout probabilities. Must be the same length as `--mlp-layers`. (Default: .25)
+ 
+ ### Cheng & Lapata Extractor
+ This is an implementation of the sentence extractive summarizer from: https://arxiv.org/abs/1603.07252
+  - `--hidden-size SIZE` Size of the RNN output layer/hidden layer. (Default: 300)
+ - `--bidirectional` When flag is set, use a bi-directional RNN.
+ - `--rnn-dropout PROB` Drop propability applied to output layers of the RNN. (Default: .25)
+ - `--num-layers NUM` Number of layers in the RNN. (Default: 1)
+ - `--cell CELL` RNN cell type to use. Options are `rnn`, `gru`, or `lstm`. (Default: `gru`)
+ - `--mlp-layers SIZE [SIZE ...]` A list of sizes of the hidden layers in the MLP. Must be the same length as `--mlp-dropouts`. (Default: `100`)
+ - `--mlp-dropouts PROB [PROBS ...]` A list the MLP hidden layer dropout probabilities. Must be the same length as `--mlp-layers`. (Default: .25)
+ 
+### SummaRunner Extractor
+`TODO`
