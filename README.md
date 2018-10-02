@@ -35,7 +35,7 @@ For the most part, defaults match the paper's primary evaluation settings.
 For example, to train the CNN encoder with Seq2Seq extractor on gpu 0, run the following:
 
 ```
-python ../script_bin/train_model.py \
+python script_bin/train_model.py \
     --trainer --train-inputs PATH/TO/INPUTS/TRAIN/DIR \
               --train-labels PATH/TO/LABELS/TRAIN/DIR \
               --valid-inputs PATH/TO/INPUTS/VALID/DIR \
