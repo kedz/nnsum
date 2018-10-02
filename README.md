@@ -47,7 +47,7 @@ python script_bin/train_model.py \
               --results PATH/TO/SAVE/VALIDATION/SCORES \
               --seed 12345678 \
     --emb --pretrained-embeddings PATH/TO/200/DIM/GLOVE \
-    --enc avg \
+    --enc cnn \
     --ext s2s --bidirectional 
 ```
 
