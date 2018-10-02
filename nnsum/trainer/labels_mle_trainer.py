@@ -11,19 +11,22 @@ from ignite.handlers import ModelCheckpoint
 from nnsum.metrics import Loss, PerlRouge
 
 from colorama import Fore, Style
+import ujson as json
 
 
 def labels_mle_trainer(model, optimizer, train_dataloader,
                        validation_dataloader, max_epochs=10, pos_weight=None,
                        summary_length=100, remove_stopwords=True,
-                       grad_clip=5):
+                       grad_clip=5, gpu=-1, model_path=None, 
+                       results_path=None, teacher_forcing=-1):
 
     trainer = create_trainer(model, optimizer, pos_weight=pos_weight, 
-                             grad_clip=grad_clip)
+                             grad_clip=grad_clip, gpu=gpu)
 
     evaluator = create_evaluator(model, validation_dataloader, 
                                  pos_weight=pos_weight, 
-                                 summary_length=summary_length)
+                                 summary_length=summary_length,
+                                 gpu=gpu)
 
     xentropy = Loss(
         output_transform=lambda o: (o["total_xent"], o["total_examples"]))
@@ -46,7 +49,13 @@ def labels_mle_trainer(model, optimizer, train_dataloader,
     @trainer.on(Events.EPOCH_STARTED)
     def log_epoch_start_time(trainer):
         trainer.state.start_time = time.time()
-
+        if teacher_forcing <= 0:
+            model.teacher_forcing = False
+        elif teacher_forcing + 1 == trainer.state.epoch:
+            print("Epoch[{}] Disabling teacher forcing!".format(
+                trainer.state.epoch))
+            model.teacher_forcing = False
+            
     @trainer.on(Events.ITERATION_COMPLETED)
     def log_training_loss(trainer):
 
@@ -131,21 +140,30 @@ def labels_mle_trainer(model, optimizer, train_dataloader,
             time.time() - trainer.state.start_time)
         print("Epoch[{}] Time Taken: {:02.0f}:{:02.0f}:{:02.0f}".format(
             trainer.state.epoch, hrs, mins, secs))
+
         print()
 
-    def _score_func(trainer):
-        model_idx = trainer.state.epoch - 1
-        return trainer.state.validation_history["rouge-2"][model_idx]
+        if results_path:
+            if not results_path.parent.exists():
+                results_path.parent.mkdir(parents=True, exist_ok=True)
+            results_path.write_text(
+                json.dumps({"training": trainer.state.training_history,
+                            "validation": trainer.state.validation_history}))
 
-    checkpoint = ModelCheckpoint("tmp_models", "s2s_ext", score_function=_score_func, require_empty=False, score_name="rouge-2")
 
 
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpoint, {'mymodel': model})
+    if model_path:
+        checkpoint = create_checkpoint(model_path)
+        trainer.add_event_handler(
+            Events.EPOCH_COMPLETED, checkpoint, {"model": model})
+
     trainer.run(train_dataloader, max_epochs=max_epochs)
 
-def create_trainer(model, optimizer, pos_weight=None, grad_clip=5):
+def create_trainer(model, optimizer, pos_weight=None, grad_clip=5, gpu=-1):
 
     def _update(engine, batch):
+        model.train()
+        batch = batch.to(gpu)
         optimizer.zero_grad()
         logits = model(
             batch, decoder_supervision=batch.targets.float())
@@ -174,10 +192,11 @@ def create_trainer(model, optimizer, pos_weight=None, grad_clip=5):
     return trainer
 
 def create_evaluator(model, dataloader, summary_length=100, pos_weight=None,
-                     delete_temp_files=True):
+                     delete_temp_files=True, gpu=-1):
 
     def _evaluator(engine, batch):
 
+        batch = batch.to(gpu)
         model.eval()
         path_data = []
 
@@ -208,3 +227,15 @@ def create_evaluator(model, dataloader, summary_length=100, pos_weight=None,
                 "total_examples": total_sentences_batch}
 
     return Engine(_evaluator)
+
+def create_checkpoint(model_path, metric_name="rouge-2"):
+    dirname = str(model_path.parent)
+    prefix = str(model_path.name)
+
+    def _score_func(trainer):
+        model_idx = trainer.state.epoch - 1
+        return trainer.state.validation_history[metric_name][model_idx]
+
+    checkpoint = ModelCheckpoint(dirname, prefix, score_function=_score_func,
+                                 require_empty=False, score_name=metric_name)
+    return checkpoint

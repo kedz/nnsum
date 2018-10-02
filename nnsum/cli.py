@@ -76,8 +76,9 @@ class MultiModuleParser(object):
         if args is None:
             args = sys.argv[1:]
 
-        if args[0] in ["-h", "-H", "--help"]:
-            return self.print_help()
+        if len(args) == 0 or args[0] in ["-h", "-H", "--help"]:
+            self.print_help()
+            sys.exit()
 
         found_idxs = [i for i, v in enumerate(args) if v in self._modules]
         found_idxs.append(len(args))
@@ -100,10 +101,9 @@ class MultiModuleParser(object):
             self.print_help()
             print("Missing the following arguments: {}".format(
                 ", ".join(missing_args)))
-            exit()
+            sys.exit()
 
         return results   
-
 
 def training_argparser():
 
@@ -128,7 +128,8 @@ def training_argparser():
     train_parser.add_argument("--epochs", type=int, default=50)
     train_parser.add_argument("--batch-size", default=32, type=int)
     train_parser.add_argument("--gpu", default=-1, type=int)
-    train_parser.add_argument("--sentence-limit", default=None, type=int)
+    train_parser.add_argument("--teacher-forcing", default=25, type=int)
+    train_parser.add_argument("--sentence-limit", default=50, type=int)
     train_parser.add_argument(
         "--weighted", action="store_true", default=False,
         help="Upweight positive labels to make them proportional to the " \
@@ -136,6 +137,10 @@ def training_argparser():
     train_parser.add_argument("--summary-length", type=int, default=100)
     train_parser.add_argument(
         "--remove-stopwords", action="store_true", default=False)
+    train_parser.add_argument("--model", type=pathlib.Path, default=None,
+                              required=False)
+    train_parser.add_argument("--results", type=pathlib.Path, default=None,
+                              required=False)
 
     emb_parser = EmbeddingContext.argparser()
 
@@ -151,9 +156,6 @@ def training_argparser():
     enc_parser.add_module_opts(
         "rnn", rnn_parser, help="RNN sentence encoder.")
 
-
-
-
     ext_parser = ModuleArgumentSelector(
         "--ext", desc="Select sentence extractor module and settings.")
     rnn_ext_parser = sent_ext.RNNSentenceExtractor.argparser()
@@ -162,6 +164,9 @@ def training_argparser():
     s2s_ext_parser = sent_ext.Seq2SeqSentenceExtractor.argparser()
     ext_parser.add_module_opts(
         "s2s", s2s_ext_parser, help="Seq2Seq sentence extractor.")
+    cl_ext_parser = sent_ext.ChengAndLapataSentenceExtractor.argparser()
+    ext_parser.add_module_opts(
+        "cl", cl_ext_parser, help="Cheng & Lapata sentence extractor.")
 
     parser = MultiModuleParser("train_model.py")
     parser.add_module("--trainer", train_parser)
@@ -170,7 +175,6 @@ def training_argparser():
     parser.add_module("--ext", ext_parser)
 
     return parser
-
 
 def create_model_from_args(embedding_context, args):
    
@@ -198,7 +202,7 @@ def create_model_from_args(embedding_context, args):
         extractor = sent_ext.Seq2SeqSentenceExtractor(
             encoder.size, **args["ext"])
     elif sent_extractor_type == "cl":
-        extractor = sent_ext.ChengAndLapataExtractor(
+        extractor = sent_ext.ChengAndLapataSentenceExtractor(
             encoder.size, **args["ext"])
     else:
         raise Exception("Bad extractor type: {}".format(sent_encoder_type))

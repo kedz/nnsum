@@ -32,6 +32,23 @@ class SingleDocumentDataset(Dataset):
             self.reference_paths = reference_paths
             self.sentence_texts = sentence_texts
             self.pretty_sentence_lengths = pretty_sentence_lengths
+
+        def to(self, device=-1):
+            if device < 0:
+                return self
+            else:
+                document = self.document.to(device)
+                if self.targets is not None:
+                    targets = self.targets.to(device)
+                else:
+                    targets = None
+                num_sentences = self.num_sentences.to(device)
+                sentence_lengths = self.sentence_lengths.to(device)
+                return self.__class__(self.id, document, targets,
+                                           num_sentences, sentence_lengths,
+                                           self.reference_paths, 
+                                           self.sentence_texts,
+                                           self.pretty_sentence_lengths)
     
     def __init__(self, vocab, inputs_dir, labels_dir=None, references_dir=None,
                  sentence_limit=None):
@@ -46,6 +63,8 @@ class SingleDocumentDataset(Dataset):
             self._labels = [path for path in labels_dir.glob("*.json")]
             self._labels.sort()
             assert len(self._labels) == len(self._inputs)
+        else:
+            self._labels = None
 
         if references_dir:
             self._reference_paths = defaultdict(list)
@@ -111,7 +130,7 @@ class SingleDocumentDataset(Dataset):
             example["id"], document, targets, doc_size, sentence_sizes,
             reference_paths, sentence_texts, pretty_sentence_lengths)
 
-    def dataloader(self, batch_size=16, shuffle=True, num_workers=8, gpu=-1):
+    def dataloader(self, batch_size=16, shuffle=True, num_workers=8):
         def collate_fn(batch):
             
             document_length = torch.LongTensor(
@@ -160,12 +179,6 @@ class SingleDocumentDataset(Dataset):
                     targets[b, :doc_size].copy_(item.targets)
                 if self._reference_paths:
                     reference_paths.append(item.reference_paths)
-
-            if gpu > -1:
-                documents = documents.cuda(gpu)
-                targets = targets.cuda(gpu)
-                document_length = document_length.cuda(gpu)
-                sentence_lengths = sentence_lengths.cuda(gpu)
 
             batch = self.SingleDocumentBatch(
                 ids, documents, targets, document_length, sentence_lengths,

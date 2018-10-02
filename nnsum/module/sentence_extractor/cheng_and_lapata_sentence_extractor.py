@@ -2,9 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import argparse
+
 
 class ChengAndLapataSentenceExtractor(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers=1, cell="gru",
+    def __init__(self, input_size, hidden_size=100, num_layers=1, cell="gru",
                  rnn_dropout=0.0, mlp_layers=[100], mlp_dropouts=[.25]):
 
         super(ChengAndLapataSentenceExtractor, self).__init__()
@@ -12,28 +14,33 @@ class ChengAndLapataSentenceExtractor(nn.Module):
             raise Exception(("cell expected one of 'gru', 'lstm', or 'rnn' "
                              "but got {}").format(cell))
 
-        print(input_size)
         if cell == "gru":
             self.encoder_rnn = nn.GRU(
                 input_size, hidden_size, num_layers=num_layers, 
-                dropout=rnn_dropout, bidirectional=False)
+                dropout=rnn_dropout if num_layers > 1 else 0., 
+                bidirectional=False)
             self.decoder_rnn = nn.GRU(
                 input_size, hidden_size, num_layers=num_layers, 
-                dropout=rnn_dropout, bidirectional=False)
+                dropout=rnn_dropout if num_layers > 1 else 0.,
+                bidirectional=False)
         elif cell == "lstm":
             self.encoder_rnn = nn.LSTM(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout, bidirectional=False)
+                dropout=rnn_dropout if num_layers > 1 else 0.,
+                bidirectional=False)
             self.decoder_rnn = nn.LSTM(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout, bidirectional=False)
+                dropout=rnn_dropout if num_layers > 1 else 0.,
+                bidirectional=False)
         else:
             self.encoder_rnn = nn.RNN(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout, bidirectional=False)
+                dropout=rnn_dropout if num_layers > 1 else 0.,
+                bidirectional=False)
             self.decoder_rnn = nn.RNN(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout, bidirectional=False)
+                dropout=rnn_dropout if num_layers > 1 else 0.,
+                bidirectional=False)
 
         self.decoder_start = nn.Parameter(
             torch.FloatTensor(input_size).normal_())
@@ -51,6 +58,23 @@ class ChengAndLapataSentenceExtractor(nn.Module):
             inp_size = out_size 
         mlp.append(nn.Linear(inp_size, 1))
         self.mlp = nn.Sequential(*mlp)
+
+    @staticmethod
+    def argparser():
+        parser = argparse.ArgumentParser(usage=argparse.SUPPRESS)
+        parser.add_argument(
+            "--hidden-size", default=300, type=int)
+        parser.add_argument(
+            "--rnn-dropout", default=.25, type=float)
+        parser.add_argument(
+            "--num-layers", default=1, type=int)
+        parser.add_argument("--cell", choices=["rnn", "gru", "lstm"],
+                            default="gru", type=str)
+        parser.add_argument(
+            "--mlp-layers", default=[100], type=int, nargs="+")
+        parser.add_argument(
+            "--mlp-dropouts", default=[.25], type=float, nargs="+")
+        return parser
 
     def _apply_rnn(self, rnn, packed_input, rnn_state=None, batch_first=True):
         packed_output, updated_rnn_state = rnn(packed_input, rnn_state)

@@ -8,7 +8,7 @@ import argparse
 
 
 class Seq2SeqSentenceExtractor(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers=1, 
+    def __init__(self, input_size, hidden_size=100, num_layers=1, 
                  cell="gru", rnn_dropout=0.0, bidirectional=False,
                  mlp_layers=[100], mlp_dropouts=[.25],
                  attention="bilinear-softmax"):
@@ -21,24 +21,30 @@ class Seq2SeqSentenceExtractor(nn.Module):
         if cell == "gru":
             self.encoder_rnn = nn.GRU(
                 input_size, hidden_size, num_layers=num_layers, 
-                dropout=rnn_dropout, bidirectional=bidirectional)
+                bidirectional=bidirectional,
+                dropout=rnn_dropout if num_layers > 1 else 0.)
             self.decoder_rnn = nn.GRU(
                 input_size, hidden_size, num_layers=num_layers, 
-                dropout=rnn_dropout, bidirectional=bidirectional)
+                bidirectional=bidirectional,
+                dropout=rnn_dropout if num_layers > 1 else 0.)
         elif cell == "lstm":
             self.encoder_rnn = nn.LSTM(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout, bidirectional=bidirectional)
+                bidirectional=bidirectional,
+                dropout=rnn_dropout if num_layers > 1 else 0.)
             self.decoder_rnn = nn.LSTM(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout, bidirectional=bidirectional)
+                bidirectional=bidirectional,
+                dropout=rnn_dropout if num_layers > 1 else 0.)
         else:
             self.encoder_rnn = nn.RNN(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout, bidirectional=bidirectional)
+                bidirectional=bidirectional,
+                dropout=rnn_dropout if num_layers > 1 else 0.)
             self.decoder_rnn = nn.RNN(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout, bidirectional=bidirectional)
+                bidirectional=bidirectional,
+                dropout=rnn_dropout if num_layers > 1 else 0.)
 
         self.decoder_start = nn.Parameter(
             torch.FloatTensor(input_size).normal_())
@@ -76,11 +82,11 @@ class Seq2SeqSentenceExtractor(nn.Module):
     def argparser():
         parser = argparse.ArgumentParser(usage=argparse.SUPPRESS)
         parser.add_argument(
-            "--hidden-size", default=100, type=int)
+            "--hidden-size", default=300, type=int)
         parser.add_argument(
             "--bidirectional", action="store_true", default=False)
         parser.add_argument(
-            "--dropout", default=.25, type=float)
+            "--rnn-dropout", default=.25, type=float)
         parser.add_argument(
             "--num-layers", default=1, type=int)
         parser.add_argument("--cell", choices=["rnn", "gru", "lstm"],
@@ -89,7 +95,6 @@ class Seq2SeqSentenceExtractor(nn.Module):
             "--mlp-layers", default=[100], type=int, nargs="+")
         parser.add_argument(
             "--mlp-dropouts", default=[.25], type=float, nargs="+")
-
         return parser
 
     def _start_decoder(self, batch_size, rnn_state):

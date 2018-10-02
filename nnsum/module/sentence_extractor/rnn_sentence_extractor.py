@@ -6,7 +6,7 @@ import argparse
 
 
 class RNNSentenceExtractor(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers=1, 
+    def __init__(self, input_size, hidden_size=100, num_layers=1, 
                  bidirectional=True, cell="gru", rnn_dropout=0.0,
                  mlp_layers=[100], mlp_dropouts=[.25]):
 
@@ -18,15 +18,18 @@ class RNNSentenceExtractor(nn.Module):
         if cell == "gru":
             self.rnn = nn.GRU(
                 input_size, hidden_size, num_layers=num_layers, 
-                dropout=rnn_dropout, bidirectional=bidirectional)
+                bidirectional=bidirectional,
+                dropout=rnn_dropout if num_layers > 1 else 0.) 
         elif cell == "lstm":
             self.rnn = nn.LSTM(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout, bidirectional=bidirectional)
+                bidirectional=bidirectional,
+                dropout=rnn_dropout if num_layers > 1 else 0.)
         else:
             self.rnn = nn.RNN(
                 input_size, hidden_size, num_layers=num_layers,
-                dropout=rnn_dropout, bidirectional=bidirectional)
+                bidirectional=bidirectional,
+                dropout=rnn_dropout if num_layers > 1 else 0.)
 
         self.rnn_dropout = rnn_dropout
 
@@ -49,7 +52,7 @@ class RNNSentenceExtractor(nn.Module):
     def argparser():
         parser = argparse.ArgumentParser(usage=argparse.SUPPRESS)
         parser.add_argument(
-            "--hidden-size", default=100, type=int)
+            "--hidden-size", default=300, type=int)
         parser.add_argument(
             "--bidirectional", action="store_true", default=False)
         parser.add_argument(
@@ -62,7 +65,6 @@ class RNNSentenceExtractor(nn.Module):
             "--mlp-layers", default=[100], type=int, nargs="+")
         parser.add_argument(
             "--mlp-dropouts", default=[.25], type=float, nargs="+")
-
         return parser
 
     def forward(self, sentence_embeddings, num_sentences, targets=None):

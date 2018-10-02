@@ -16,13 +16,16 @@ class RNNSentenceEncoder(nn.Module):
 
         if cell == "gru":
             self.rnn = nn.GRU(input_size, hidden_size, num_layers=num_layers,
-                              bidirectional=bidirectional, dropout=dropout)
+                              bidirectional=bidirectional, 
+                              dropout=dropout if num_layers > 1 else 0.)
         elif cell == "lstm":
             self.rnn = nn.LSTM(input_size, hidden_size, num_layers=num_layers,
-                               bidirectional=bidirectional, dropout=dropout)
+                               bidirectional=bidirectional, 
+                               dropout=dropout if num_layers > 1 else 0.)
         else:
             self.rnn = nn.RNN(input_size, hidden_size, num_layers=num_layers,
-                              bidirectional=bidirectional, dropout=dropout)
+                              bidirectional=bidirectional,
+                              dropout=dropout if num_layers > 1 else 0.)
 
         self.bidirectional_ = bidirectional
 
