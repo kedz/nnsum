@@ -2,6 +2,10 @@ import nnsum.trainer
 import nnsum.io
 import nnsum.module
 from nnsum.model import Seq2SeqModel
+from nnsum.utils.rouge_score import RougeScorer
+from nnsum.utils.word_tokenize import tokenize,normalize
+from nnsum.utils.ref_loader import get_refs_dict
+from nnsum.trainer import collect_reference_paths
 
 import torch
 
@@ -39,6 +43,8 @@ def main():
     parser.add_argument("--weighted", default=False, action="store_true")
     parser.add_argument("--sent-limit", default=None, type=int)
     parser.add_argument("--raml", default=False, action="store_true")
+    parser.add_argument("--alt-rouge", default=False, action="store_true")
+    parser.add_argument("--stopwords", default="stopwords.txt")
 
     # ROUGE Parameters
     parser.add_argument(
@@ -86,6 +92,22 @@ def main():
         weight = nnsum.trainer.compute_class_weights(train_data)
     else:
         weight = None
+
+    # check for alt_rouge
+    alt_rouge = None
+    if args.alt_rouge:
+      ids2refs = collect_reference_paths(args.valid_refs)
+
+      try:
+        stopwords = set([normalize(word.strip()) for word in open(args.stopwords).readlines()])
+      except:
+        stopwords = set()
+        logging.warning(" Failed to load stopwords, training without.")
+
+      ref_dicts = get_refs_dict(ids2refs, stopwords, args.summary_length)
+      scorer = RougeScorer(stopwords, word_limit = args.summary_length)
+      alt_rouge = (ref_dicts,scorer)
+
 
     logging.info(" Building model.")
     model = Seq2SeqModel.model_builder(
@@ -141,7 +163,7 @@ def main():
         valid_result = nnsum.trainer.validation_epoch(
             model, valid_data, args.valid_refs, pos_weight=weight,
             remove_stopwords=args.remove_stopwords, 
-            summary_length=args.summary_length, raml=args.raml)
+            summary_length=args.summary_length, raml=args.raml, alt_rouge=alt_rouge)
         valid_results.append(valid_result)
         valid_epoch_time = datetime.datetime.utcnow() - valid_start_time
         valid_times.append(valid_epoch_time)

@@ -56,7 +56,7 @@ def compute_loss(out, batch, mask, raml, mrt):
      for i in range(sample_size):
        for b in range(batch_size):
          score = label_scores[b][i]["score"]
-         loss_list[i][b] *= score / totals[b]
+         loss_list[i][b] *= score / (totals[b] + 0.00000001)
      
      return sum(loss_list).sum(1).sum(0)
    else:
