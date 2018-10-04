@@ -27,12 +27,14 @@ def main():
         args["trainer"]["train_inputs"], **args["emb"])
 
     print("Loading training data.")
-    train_data = nnsum.data.SummarizationDataset(
+    train_data = nnsum.data.SampleCacheDataset(
         embedding_context.vocab,
         args["trainer"]["train_inputs"],
         targets_dir=args["trainer"]["train_labels"],
-        sentence_limit=args["trainer"]["sentence_limit"])
-    train_loader = nnsum.data.SummarizationDataLoader(
+        sentence_limit=args["trainer"]["sentence_limit"],
+        num_samples=args["trainer"]["raml_samples"],
+        temperature=args["trainer"]["raml_temp"])
+    train_loader = nnsum.data.SampleCacheDataLoader(
         train_data, batch_size=args["trainer"]["batch_size"],
         num_workers=args["trainer"]["loader_workers"])
 
@@ -48,7 +50,7 @@ def main():
         num_workers=args["trainer"]["loader_workers"])
 
     if args["trainer"]["weighted"]:
-        weight = nnsum.trainer.compute_class_weights(train_data)
+        weight = nnsum.trainer.compute_class_weights(val_data)
     else:
         weight = None
 
@@ -59,7 +61,7 @@ def main():
     model.initialize_parameters(logger=logging.getLogger())
     optimizer = torch.optim.Adam(model.parameters(), lr=.0001)
 
-    nnsum.trainer.labels_mle_trainer(
+    nnsum.trainer.labels_raml_trainer(
         model, optimizer, train_loader, val_loader,
         pos_weight=weight, max_epochs=args["trainer"]["epochs"],
         summary_length=args["trainer"]["summary_length"],

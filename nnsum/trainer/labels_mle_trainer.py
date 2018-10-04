@@ -18,10 +18,14 @@ def labels_mle_trainer(model, optimizer, train_dataloader,
                        validation_dataloader, max_epochs=10, pos_weight=None,
                        summary_length=100, remove_stopwords=True,
                        grad_clip=5, gpu=-1, model_path=None, 
-                       results_path=None, teacher_forcing=-1):
+                       results_path=None, teacher_forcing=-1,
+                       create_trainer_fn=None):
 
-    trainer = create_trainer(model, optimizer, pos_weight=pos_weight, 
-                             grad_clip=grad_clip, gpu=gpu)
+    if create_trainer_fn is None:
+        create_trainer_fn = create_trainer
+
+    trainer = create_trainer_fn(model, optimizer, pos_weight=pos_weight, 
+                                grad_clip=grad_clip, gpu=gpu)
 
     evaluator = create_evaluator(model, validation_dataloader, 
                                  pos_weight=pos_weight, 

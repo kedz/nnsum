@@ -19,6 +19,12 @@ class Vocab(object):
         word2index = {w: i for i, w in enumerate(word_list)}
         return Vocab(word_list, word2index, pad=pad, unk=unk)
 
+    def __getitem__(self, word_or_index):
+        if isinstance(word_or_index, str):
+            return self.index(word_or_index)
+        else:
+            return self.token(word_or_index)
+
     def index(self, token):
         index = self._tokens2index.get(token, self._unk_idx)
         if index is None:

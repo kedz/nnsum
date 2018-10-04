@@ -1,5 +1,4 @@
 from .vocab import Vocab
-from .input_loader import sds_token_iter
 from ..module import EmbeddingContext
 
 import torch
@@ -17,7 +16,6 @@ def _process_file(path):
                 token = token.lower()
                 wc[token] = wc.get(token, 0) + 1
     return wc
-
 
 def create_vocab(inputs_path, top_k=1000000000, at_least=1, pad="_PAD_", 
                  unk="_UNK_", processes=32):
@@ -125,7 +123,7 @@ def initialize_embedding_context(inputs_path, embedding_size=300,
             append_unknown=pretrained_append_unknown)
         if filter_pretrained:
             filter_vocab = create_vocab(
-                sds_token_iter(inputs_path), at_least=at_least, top_k=top_k)
+                inputs_path, at_least=at_least, top_k=top_k)
             vocab, initializer = filter_embeddings(
                 pt_vocab, pt_embeddings, filter_vocab)
             

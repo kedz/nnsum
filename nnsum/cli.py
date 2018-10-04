@@ -134,6 +134,9 @@ def training_argparser():
         "--weighted", action="store_true", default=False,
         help="Upweight positive labels to make them proportional to the " \
              "negative labels.")   
+    train_parser.add_argument("--loader-workers", type=int, default=8)
+    train_parser.add_argument("--raml-samples", type=int, default=25)
+    train_parser.add_argument("--raml-temp", type=float, default=.05)
     train_parser.add_argument("--summary-length", type=int, default=100)
     train_parser.add_argument(
         "--remove-stopwords", action="store_true", default=False)
