@@ -112,7 +112,7 @@ def initialize_embedding_context(inputs_path, embedding_size=300,
                                  update_rule="update-all", word_dropout=0.0,
                                  embedding_dropout=0.0, 
                                  pretrained_embeddings=None, at_least=1,
-                                 filter_pretrained=True,
+                                 filter_pretrained=False,
                                  pretrained_append_pad="_PAD_",
                                  pretrained_append_unknown="_UNK_",
                                  top_k=None):
