@@ -1,14 +1,13 @@
 # nnsum
 An extractive neural network text summarization library for the EMNLP 2018 paper ''Content Selection in Deep Learning Models of Summarization."
 
-- Data and preprocessing scripts are located in preprocessing_scripts. If a dataset is publicly available the script will download it. 
+- Data and preprocessing scripts are in a separate library (https://github.com/kedz/summarization-datasets). 
+  If a dataset is publicly available the script will download it. 
 The DUC and NYT datasets must be obtained separately before calling the preprocessing script.
   - To obtain the DUC 2001/2002 datasets: https://duc.nist.gov/data.html
   - To obtain the NYT dataset: https://catalog.ldc.upenn.edu/ldc2008t19
-
 - Model implementation code is located in `nnsum`.
 - Training and evaluation scripts are located in `script_bin`.
-- Experiment settings/bash scripts for each table in the paper are located in experiment_scripts.
 
 # Installation
 1. Install pytorch using pip or conda.
@@ -18,7 +17,13 @@ git clone https://github.com/kedz/nnsum.git
 cd nnsum
 python setup.py install
 ```
-3. Get the data: `TODO link_to_data`
+3. Get the data: 
+```bash
+git clone https://github.com/kedz/summarization-datasets.git
+cd summarization-datasets
+python setup.py install
+````
+See README.md in summarization-datasets for details on how to get each dataset from the paper.
 
 # Training A Model
 
