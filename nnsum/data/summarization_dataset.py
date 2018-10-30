@@ -3,6 +3,7 @@ from torch.utils.data import Dataset
 
 import pathlib
 import ujson as json
+from collections import defaultdict
 
 
 class SummarizationDataset(Dataset):
@@ -36,25 +37,21 @@ class SummarizationDataset(Dataset):
     def sentence_limit(self):
         return self._sentence_limit
 
-    @staticmethod
-    def _get_references(inputs_data, ref_dir):
-        refs = []
-        for path in ref_dir.glob("{}*".format(inputs_data["id"])):
-            ref_id = path.stem.rsplit(".")[0]
-            if ref_id == inputs_data["id"]:
-                refs.append(path)
-        return refs
-
     def _collect_references(self, references_dir):
+
+        ref_paths = defaultdict(list)
+        for path in references_dir.glob("*"):
+            ref_id = path.stem.rsplit(".")[0]
+            ref_paths[ref_id].append(path)
+
         all_ref_paths = []
         for path in self._inputs:
-            inputs_data = json.loads(path.read_text())
-            ref_paths = self._get_references(inputs_data, references_dir)
-            if len(ref_paths) == 0:
+            rp = ref_paths[path.stem]
+            if len(rp) == 0:
                 raise Exception(
                     "No references found for example id: {}".format(
-                        inputs_data["id"]))
-            all_ref_paths.append(ref_paths)
+                        path.stem))
+            all_ref_paths.append(rp)
         return all_ref_paths
     
     def __len__(self):
