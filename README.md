@@ -148,7 +148,18 @@ Sentence embeddings are run through a seq2seq based extractor with attention and
  - `--mlp-dropouts PROB [PROBS ...]` A list the MLP hidden layer dropout probabilities. Must be the same length as `--mlp-layers`. (Default: .25)
  
 ### SummaRunner Extractor
-`TODO`
+This is an implementation of the sentence extractive summarizer from: https://arxiv.org/abs/1611.04230
+- `--hidden-size SIZE` Size of the RNN output layer/hidden layer. (Default: 300)
+- `--bidirectional` When flag is set, use a bi-directional RNN.
+- `--rnn-dropout PROB` Drop propability applied to output layers of the RNN. (Default: .25)
+- `--num-layers NUM` Number of layers in the RNN. (Default: 1)
+- `--cell CELL` RNN cell type to use. Options are `rnn`, `gru`, or `lstm`. (Default: `gru`)
+- `--sentence-size SIZE` Dimension of sentence representation (after RNN layer) (Default: 100)
+- `--document-size SIZE` Dimension of the document representation (Default: 100)
+- `--segments SEG` Number of coarse position chunks, e.g. 4 segments means sentences in first quarter of the document would get the same segment embedding, the second quarter and so on. (Default: 4)
+- `--max-position-weights NUM` The number of unique sentence position embeddings to use. The first NUM sentences will get unique sentence position embeddings. Documents longer than NUM will have the last sentence position embedding repeated. (Default: 50)
+- `--segment-size SIZE` Dimension of segment embeddings. (Default: 16)
+- `--position-size SIZE` Dimension of position embeddings. (Default: 16)
 
 # Evaluating a Model
 To get a model's ROUGE scores on the train, validation, or test set use `script_bin/eval_model.py`.
