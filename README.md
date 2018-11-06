@@ -1,5 +1,5 @@
 # nnsum
-An extractive neural network text summarization library for the EMNLP 2018 paper ''Content Selection in Deep Learning Models of Summarization."
+An extractive neural network text summarization library for the EMNLP 2018 paper *Content Selection in Deep Learning Models of Summarization* (https://arxiv.org/abs/1810.12343).
 
 - Data and preprocessing scripts are in a separate library (https://github.com/kedz/summarization-datasets). 
   If a dataset is publicly available the script will download it. 
