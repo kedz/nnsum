@@ -33,7 +33,7 @@ class Seq2SeqModel(SummarizationModel):
         parser.add_argument(
             "--doc-rnn-bidirectional", action="store_true", default=False)
         parser.add_argument(
-            "--doc-rnn-dropout", default=.25, type=float)
+            "--doc-rnn-dropout", default=.35, type=float)
         parser.add_argument(
             "--doc-rnn-layers", default=1, type=int)
     
@@ -47,7 +47,7 @@ class Seq2SeqModel(SummarizationModel):
         parser.add_argument(
             "--mlp-layers", default=[100], type=int, nargs="+")
         parser.add_argument(
-            "--mlp-dropouts", default=[.25], type=float, nargs="+")
+            "--mlp-dropouts", default=[.35], type=float, nargs="+")
 
     @staticmethod
     def model_builder(embedding_context, 

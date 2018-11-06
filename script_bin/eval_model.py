@@ -1,14 +1,16 @@
 import argparse
 import pathlib
-import ujson as json
 
 import torch
 import nnsum
 import pandas as pd
 import rouge_papier
-
+from collections import Counter
 
 def main():
+    
+    pos_hist = Counter()
+
     parser = argparse.ArgumentParser(
         "Evaluate nnsum models using original Perl ROUGE script.")
     parser.add_argument("--batch-size", default=32, type=int)
@@ -53,7 +55,8 @@ def main():
                 print("generating summaries {} / {} ...".format(
                         step, len(loader)),
                     end="\r" if step < len(loader) else "\n", flush=True)
-                texts = model.predict(batch, max_length=args.summary_length)
+                texts, positions = model.predict(batch, max_length=args.summary_length, return_indices=True)
+                for pos in positions: pos_hist[pos] += 1
                 
                 for text, ref_paths in zip(texts, batch.reference_paths):
                     summary = "\n".join(text)                
@@ -77,7 +80,8 @@ def main():
 
             results = {"idividual": {id: record 
                                      for id, record in zip(ids, records)},
-                       "average": df[-1:].to_dict("records")[0]}
+                       "average": df[-1:].to_dict("records")[0],
+                       "pos_hist": {k : c for (c,k) in sorted(pos_hist.most_common())}}
             args.results.parent.mkdir(parents=True, exist_ok=True)
             with args.results.open("w") as fp:
                 fp.write(json.dumps(results))

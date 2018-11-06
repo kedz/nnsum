@@ -137,6 +137,8 @@ def training_argparser():
     train_parser.add_argument("--loader-workers", type=int, default=8)
     train_parser.add_argument("--raml-samples", type=int, default=25)
     train_parser.add_argument("--raml-temp", type=float, default=.05)
+    train_parser.add_argument("--raml-lband", type=float, default=0.0)
+    train_parser.add_argument("--raml-hband", type=float, default=1.0)
     train_parser.add_argument("--summary-length", type=int, default=100)
     train_parser.add_argument(
         "--remove-stopwords", action="store_true", default=False)

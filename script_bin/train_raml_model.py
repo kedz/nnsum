@@ -33,7 +33,8 @@ def main():
         targets_dir=args["trainer"]["train_labels"],
         sentence_limit=args["trainer"]["sentence_limit"],
         num_samples=args["trainer"]["raml_samples"],
-        temperature=args["trainer"]["raml_temp"])
+        temperature=args["trainer"]["raml_temp"],
+        band=[args["trainer"]["raml_lband"],args["trainer"]["raml_hband"]])
     train_loader = nnsum.data.SampleCacheDataLoader(
         train_data, batch_size=args["trainer"]["batch_size"],
         num_workers=args["trainer"]["loader_workers"])
