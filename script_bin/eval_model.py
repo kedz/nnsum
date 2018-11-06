@@ -6,6 +6,7 @@ import torch
 import nnsum
 import pandas as pd
 import rouge_papier
+from multiprocessing import cpu_count
 
 
 def main():
@@ -15,6 +16,7 @@ def main():
     parser.add_argument("--gpu", default=-1, type=int)
     parser.add_argument("--sentence-limit", default=None, type=int)
     parser.add_argument("--summary-length", type=int, default=100)
+    parser.add_argument("--loader-workers", type=int, default=None)
     parser.add_argument(
         "--remove-stopwords", action="store_true", default=False)
     parser.add_argument(
@@ -28,6 +30,9 @@ def main():
  
     args = parser.parse_args() 
 
+    if args.loader_workers is None:
+        args.loader_workers = min(16, cpu_count())
+
     print("Loading model...", end="", flush=True)
     model = torch.load(args.model, map_location=lambda storage, loc: storage)
     if args.gpu > -1:
@@ -35,13 +40,13 @@ def main():
     vocab = model.embeddings.vocab
     print(" OK!")
 
-    data = nnsum.data.SingleDocumentDataset(
+    data = nnsum.data.SummarizationDataset(
         vocab,
         args.inputs,
         references_dir=args.refs,
         sentence_limit=args.sentence_limit)
-    loader = data.dataloader(
-        batch_size=args.batch_size)
+    loader = nnsum.data.SummarizationDataLoader(
+        data, batch_size=args.batch_size, num_workers=args.loader_workers)
 
     ids = []
     path_data = []
