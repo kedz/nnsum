@@ -172,6 +172,10 @@ def training_argparser():
     cl_ext_parser = sent_ext.ChengAndLapataSentenceExtractor.argparser()
     ext_parser.add_module_opts(
         "cl", cl_ext_parser, help="Cheng & Lapata sentence extractor.")
+    sr_ext_parser = sent_ext.SummaRunnerSentenceExtractor.argparser()
+    ext_parser.add_module_opts(
+        "sr", sr_ext_parser, help="SummaRunner sentence extractor.")
+
 
     parser = MultiModuleParser("train_model.py")
     parser.add_module("--trainer", train_parser)
@@ -208,6 +212,9 @@ def create_model_from_args(embedding_context, args):
             encoder.size, **args["ext"])
     elif sent_extractor_type == "cl":
         extractor = sent_ext.ChengAndLapataSentenceExtractor(
+            encoder.size, **args["ext"])
+    elif sent_extractor_type == "sr":
+        extractor = sent_ext.SummaRunnerSentenceExtractor(
             encoder.size, **args["ext"])
     else:
         raise Exception("Bad extractor type: {}".format(sent_encoder_type))

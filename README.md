@@ -1,14 +1,13 @@
 # nnsum
-An extractive neural network text summarization library for the EMNLP 2018 paper ''Content Selection in Deep Learning Models of Summarization."
+An extractive neural network text summarization library for the EMNLP 2018 paper *Content Selection in Deep Learning Models of Summarization* (https://arxiv.org/abs/1810.12343).
 
-- Data and preprocessing scripts are located in preprocessing_scripts. If a dataset is publicly available the script will download it. 
+- Data and preprocessing scripts are in a separate library (https://github.com/kedz/summarization-datasets). 
+  If a dataset is publicly available the script will download it. 
 The DUC and NYT datasets must be obtained separately before calling the preprocessing script.
   - To obtain the DUC 2001/2002 datasets: https://duc.nist.gov/data.html
   - To obtain the NYT dataset: https://catalog.ldc.upenn.edu/ldc2008t19
-
 - Model implementation code is located in `nnsum`.
 - Training and evaluation scripts are located in `script_bin`.
-- Experiment settings/bash scripts for each table in the paper are located in experiment_scripts.
 
 # Installation
 1. Install pytorch using pip or conda.
@@ -18,7 +17,13 @@ git clone https://github.com/kedz/nnsum.git
 cd nnsum
 python setup.py install
 ```
-3. Get the data: `TODO link_to_data`
+3. Get the data: 
+```bash
+git clone https://github.com/kedz/summarization-datasets.git
+cd summarization-datasets
+python setup.py install
+````
+See README.md in summarization-datasets for details on how to get each dataset from the paper.
 
 # Training A Model
 
@@ -143,7 +148,18 @@ Sentence embeddings are run through a seq2seq based extractor with attention and
  - `--mlp-dropouts PROB [PROBS ...]` A list the MLP hidden layer dropout probabilities. Must be the same length as `--mlp-layers`. (Default: .25)
  
 ### SummaRunner Extractor
-`TODO`
+This is an implementation of the sentence extractive summarizer from: https://arxiv.org/abs/1611.04230
+- `--hidden-size SIZE` Size of the RNN output layer/hidden layer. (Default: 300)
+- `--bidirectional` When flag is set, use a bi-directional RNN.
+- `--rnn-dropout PROB` Drop propability applied to output layers of the RNN. (Default: .25)
+- `--num-layers NUM` Number of layers in the RNN. (Default: 1)
+- `--cell CELL` RNN cell type to use. Options are `rnn`, `gru`, or `lstm`. (Default: `gru`)
+- `--sentence-size SIZE` Dimension of sentence representation (after RNN layer) (Default: 100)
+- `--document-size SIZE` Dimension of the document representation (Default: 100)
+- `--segments SEG` Number of coarse position chunks, e.g. 4 segments means sentences in first quarter of the document would get the same segment embedding, the second quarter and so on. (Default: 4)
+- `--max-position-weights NUM` The number of unique sentence position embeddings to use. The first NUM sentences will get unique sentence position embeddings. Documents longer than NUM will have the last sentence position embedding repeated. (Default: 50)
+- `--segment-size SIZE` Dimension of segment embeddings. (Default: 16)
+- `--position-size SIZE` Dimension of position embeddings. (Default: 16)
 
 # Evaluating a Model
 To get a model's ROUGE scores on the train, validation, or test set use `script_bin/eval_model.py`.
