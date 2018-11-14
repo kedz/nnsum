@@ -5,3 +5,4 @@ from . import trainer
 from . import module
 from . import model
 from . import cli
+from . import fg_cli
