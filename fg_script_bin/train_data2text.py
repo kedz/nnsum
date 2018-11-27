@@ -1,53 +1,59 @@
 import torch
-import random
+#import random
 
 import nnsum
-import logging
-logging.getLogger().setLevel(logging.INFO)
+#import logging
+#logging.getLogger().setLevel(logging.INFO)
 
 
 def main():
 
-    args = nnsum.fg_cli.training_argparser().parse_args()
+    args = nnsum.fg_cli.training_parsers.seq2seq().parse_args()
+   
     train_source = nnsum.data.RAMDataset(args.train_source)
     train_target = nnsum.data.RAMDataset(args.train_target)
-    from nnsum import embedding_context
-    x, y = embedding_context.create_vocab(
-        train_source, features=["fields",],
-        pad_token="<P>", unk_token="<U>", start_token="<S>") # "positions"])
+    
+    print(args)
+    src_ec = nnsum.embedding_context.cli.from_args(
+        args.MODS["src-emb"], train_source, pad_token="<P>", 
+        unknown_token="<U>", start_token="<ES>")
 
-    source_vocabs = [("tokens", x)] + [(k, v) for k, v in y.items()]
-    source_embeddings = {}
-    for feat, vocab in source_vocabs:
-        ec = nnsum.module.EmbeddingContext(vocab, 100)
-        source_embeddings[feat] = ec
+    tgt_ec = nnsum.embedding_context.cli.from_args(
+        args.MODS["tgt-emb"], train_target, pad_token="<P>", 
+        unknown_token="<U>", start_token="<DS>", stop_token="</DS>")
 
-    src_ec = nnsum.module.MultiEmbeddingContext(source_embeddings, merge="concat")
+    encoder = nnsum.seq2seq.cli.rnn_encoder_from_args(args.MODS["enc"], src_ec)
+    decoder = nnsum.seq2seq.cli.rnn_decoder_from_args(args.MODS["dec"], tgt_ec)
+    model = nnsum.seq2seq.EncoderDecoderModel(encoder, decoder)    
 
-    tgt_vocab = embedding_context.create_vocab(
-        train_target, pad_token="<P>", unk_token="<U>", 
-        start_token="<S>", stop_token="</S>")
-    tgt_ec = nnsum.module.EmbeddingContext(tgt_vocab, 200)
+    if args.gpu > -1:
+        model.cuda(args.gpu)
 
-    from nnsum.model.rnn_seq2seq import RNNSeq2SeqModel
-    target_vocabs = {"tokens": tgt_vocab}
+    train_loader = nnsum.data.Seq2SeqDataLoader(
+        nnsum.data.AlignedDataset(train_source, train_target),
+        src_ec.named_vocabs,
+        tgt_ec.named_vocabs,
+        batch_size=args.batch_size,
+        pin_memory=args.gpu > -1,
+        num_workers=args.workers)
+
+    valid_source = nnsum.data.RAMDataset(args.valid_source)
+    valid_target = nnsum.data.RAMDataset(args.valid_target)
+
+    valid_loader = nnsum.data.Seq2SeqDataLoader(
+        nnsum.data.AlignedDataset(valid_source, valid_target),
+        src_ec.named_vocabs,
+        tgt_ec.named_vocabs,
+        batch_size=args.batch_size,
+        pin_memory=args.gpu > -1,
+        num_workers=args.workers)
 
 
-    model = RNNSeq2SeqModel(src_ec, tgt_ec)
-    model.cuda(0)
-
-
-    source_vocabs = {k: v for k, v in source_vocabs}
-
-    train_data = nnsum.data.AlignedDataset(train_source, train_target)
-    train_loader = nnsum.data.Seq2SeqDataLoader(train_data, source_vocabs,
-                                                target_vocabs,
-                                                batch_size=16,
-                                                pin_memory=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=.0001)
     nnsum.trainer.seq2seq_mle_trainer(
-        model, optimizer, train_loader, gpu=0)
+        model, optimizer, train_loader, valid_loader, gpu=args.gpu,
+        model_path=args.model_path, max_epochs=50)
 
 
     

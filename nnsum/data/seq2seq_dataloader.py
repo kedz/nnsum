@@ -9,12 +9,14 @@ class Seq2SeqDataLoader(DataLoader):
     def __init__(self, dataset, source_vocabs, target_vocabs,
                  batch_size=1, shuffle=False, sampler=None, 
                  batch_sampler=None, num_workers=0, pin_memory=False, 
-                 drop_last=False, timeout=0, worker_init_fn=None):
+                 drop_last=False, timeout=0, worker_init_fn=None,
+                 include_original_data=False, sorted=True):
 
         if isinstance(dataset, AlignedDataset):
             collate_fn = self._aligned_collate_fn 
         else:
             collate_fn = self._source_collate_fn
+        self.include_original_data = include_original_data
 
         super(Seq2SeqDataLoader, self).__init__(
             dataset, batch_size=batch_size, shuffle=shuffle, sampler=sampler,
@@ -23,16 +25,41 @@ class Seq2SeqDataLoader(DataLoader):
             worker_init_fn=worker_init_fn, collate_fn=collate_fn)
         self._source_vocabs = source_vocabs
         self._target_vocabs = target_vocabs
-
+        self._sorted = sorted
 
     def _source_collate_fn(self, batch):
-        pass
+        if self._sorted:
+            batch.sort(key=lambda x: len(x["tokens"]["tokens"]), reverse=True)
+
+        lengths = torch.LongTensor([len(ex["tokens"]["tokens"]) for ex in batch])
+        source_lengths = lengths.add_(1)
+
+        batch_source_features = {}
+        batch_data = {"source_features": batch_source_features,
+                      "source_lengths": source_lengths}
+
+        if self.include_original_data:
+            batch_data["orig_data"] = [ex for ex in batch]
+
+        for feat, vocab in self._source_vocabs.items():
+            src_feature_sequences = []
+            for ex in batch:
+                ftr_seq = torch.LongTensor(
+                    [vocab.start_index] + [vocab[f] for f in ex["tokens"][feat]])
+                src_feature_sequences.append(ftr_seq)
+            
+            src_feature_sequences = batch_pad_and_stack_vector(
+                src_feature_sequences, vocab.pad_index)
+            batch_source_features[feat] = src_feature_sequences
+
+        return batch_data
 
     def _aligned_collate_fn(self, batch):
-        batch.sort(key=lambda x: len(x[0]["tokens"]), reverse=True)
+        if self._sorted:
+            batch.sort(key=lambda x: len(x[0]["tokens"]["tokens"]), reverse=True)
 
-        lengths = torch.LongTensor([[len(ex[0]["tokens"]), 
-                                     len(ex[1]["tokens"])]
+        lengths = torch.LongTensor([[len(ex[0]["tokens"]["tokens"]), 
+                                     len(ex[1]["tokens"]["tokens"])]
                                     for ex in batch])
         source_lengths = lengths[:,0] + 1
         target_lengths = lengths[:,1] + 1
@@ -46,11 +73,14 @@ class Seq2SeqDataLoader(DataLoader):
                       "target_output_features": batch_target_output_features,
                       "target_lengths": target_lengths}
 
+        if self.include_original_data:
+            batch_data["orig_data"] = [ex for ex in batch]
+
         for feat, vocab in self._source_vocabs.items():
             src_feature_sequences = []
             for ex in batch:
                 ftr_seq = torch.LongTensor(
-                    [vocab.start_index] + [vocab[f] for f in ex[0][feat]])
+                    [vocab.start_index] + [vocab[f] for f in ex[0]["tokens"][feat]])
                 src_feature_sequences.append(ftr_seq)
             
             src_feature_sequences = batch_pad_and_stack_vector(
@@ -62,7 +92,7 @@ class Seq2SeqDataLoader(DataLoader):
             tgt_output_sequences = []
             for ex in batch:
                 ftr_seq = torch.LongTensor(
-                    [vocab.start_index] + [vocab[f] for f in ex[1][feat]] \
+                    [vocab.start_index] + [vocab[f] for f in ex[1]["tokens"][feat]] \
                     + [vocab.stop_index])
                 tgt_input_sequences.append(ftr_seq[:-1])
                 tgt_output_sequences.append(ftr_seq[1:])
