@@ -35,10 +35,8 @@ class RNNDecoder(nn.Module):
         logits = self._predictor(decoder_output)
         return logits, {}, state
 
-    def predict(self, context, state):
+    def decode(self, context, state, max_steps=1000, return_log_probs=False):
         batch_size = context.size(0)
-
-        max_steps = 50
         
         start_idx = self.embedding_context.vocab.start_index
         stop_idx = self.embedding_context.vocab.stop_index
@@ -48,16 +46,35 @@ class RNNDecoder(nn.Module):
             batch_size).long().fill_(start_idx).view(-1, 1)
 
         predicted_tokens = []
+        token_log_probs = []
         
         active_items = inputs.ne(stop_idx).view(-1)
         for step in range(max_steps):
             logits, attn, state = self.forward(inputs, context, state)
             a, next_tokens = logits.max(2)
+            
+            if return_log_probs:
+                
+                lp_step = logits.gather(2, next_tokens.view(1, -1, 1)) \
+                    - torch.logsumexp(logits, dim=2, keepdim=True)
+                lp_step.data.view(-1).masked_fill_(~active_items, 0)
+                token_log_probs.append(lp_step)  
+            
             inputs = next_tokens.t()
-            active_items = active_items * inputs.view(-1).ne(stop_idx)
             inputs.view(-1).data.masked_fill_(~active_items, pad_idx)
+            predicted_tokens.append(inputs)
+            active_items = active_items * inputs.view(-1).ne(stop_idx)
             if torch.all(~active_items):
                 break
-            predicted_tokens.append(inputs)
         predicted_tokens = torch.cat(predicted_tokens, dim=1)
-        return predicted_tokens
+
+        if return_log_probs:
+            return predicted_tokens, torch.cat(token_log_probs, 0)
+        else:
+            return predicted_tokens
+
+    def start_inputs(self, batch_size):
+        inputs = {n: torch.LongTensor([[v.start_index]] * batch_size)   
+                  for n, v in self.embedding_context.named_vocabs.items()}
+        return inputs 
+

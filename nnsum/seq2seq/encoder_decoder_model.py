@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+from .beam_search import BeamSearch
+import numpy as np
 
 
 class EncoderDecoderModel(nn.Module):
@@ -53,15 +55,43 @@ class EncoderDecoderModel(nn.Module):
             context, state = self._encoder(
                 inputs["source_features"], 
                 inputs["source_lengths"]) 
-            output = self._decoder.predict(context, state)
+            output = self._decoder.decode(context, state)
             output = output[inv_order]
         else:
             context, state = self._encoder(
                 inputs["source_features"], 
                 inputs["source_lengths"]) 
-            output = self._decoder.predict(context, state)
+            output = self._decoder.decode(context, state)
 
         if return_tokens:
-            output = self.decoder.embedding_context.convert_index_tensor(output)
+            output = self.decoder.embedding_context.convert_index_tensor(
+                output)
+
+        return output
+
+    def beam_decode(self, inputs, beam_size=8, sorted=False, 
+                    return_tokens=True, max_steps=300):
+
+        if not sorted:
+            inputs, inv_order = self._sort_inputs(inputs)
+            context, state = self._encoder(
+                inputs["source_features"], 
+                inputs["source_lengths"]) 
+            beam = BeamSearch(self.decoder, state, context, 
+                              beam_size=beam_size, max_steps=max_steps)
+            beam.search()
+            output = beam.candidates[inv_order]
+        else:
+            context, state = self._encoder(
+                inputs["source_features"], 
+                inputs["source_lengths"]) 
+            beam = BeamSearch(self.decoder, state, context, 
+                              beam_size=beam_size, max_steps=max_steps)
+            beam.search()
+            output = beam.candidates
+
+        if return_tokens:
+            output = self.decoder.embedding_context.convert_index_tensor(
+                output)
 
         return output
