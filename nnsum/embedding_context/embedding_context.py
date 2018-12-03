@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .vocab import Vocab
+
 import argparse
 from collections import OrderedDict
 
@@ -25,6 +27,13 @@ class EmbeddingContext(nn.Module):
             choices=["update-all", "fix-all"],)
         parser.add_argument(
             "--filter-pretrained", action="store_true", default=False)
+
+    @staticmethod
+    def from_vocab_size(vocab_size, embedding_size=50, pad=None, unknown=None,
+                        start=None, stop=None, **kwargs):
+        vocab = Vocab.from_vocab_size(vocab_size, pad=pad, unk=unknown,
+                                      start=start, stop=stop)    
+        return EmbeddingContext(vocab, embedding_size, **kwargs)
 
     def __init__(self, vocab, embedding_size, word_dropout=0.0,
                  embedding_dropout=0.0, initializer=None, 
@@ -147,11 +156,14 @@ class EmbeddingContext(nn.Module):
             logger.info(" EmbeddingContext initialization finished.")
 
     def convert_index_tensor(self, tensor, drop_pad=True):
-        assert tensor.dim() in [1, 2]
+        assert tensor.dim() in [1, 2, 3]
         if tensor.dim() == 1:
             return [self.vocab[idx.item()] for idx in tensor
                     if idx != self.vocab.pad_index or not drop_pad]
-        else:
+        elif tensor.dim() == 2:
             return [[self.vocab[idx.item()] for idx in row
                      if idx != self.vocab.pad_index or not drop_pad]
                     for row in tensor] 
+        else:
+            return [self.convert_index_tensor(subten, drop_pad=drop_pad)
+                    for subten in tensor]
