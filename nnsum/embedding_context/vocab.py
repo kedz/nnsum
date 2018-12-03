@@ -13,6 +13,11 @@ class Vocab(object):
         self._stop_idx = self._tokens2index.get(stop, None)
 
     @staticmethod
+    def from_vocab_size(vocab_size, **kwargs):
+        word_list = [str(x) for x in range(vocab_size)]
+        return Vocab.from_word_list(word_list, **kwargs)
+
+    @staticmethod
     def from_word_list(word_list, pad="_PAD_", unk="_UNK_", 
                        start=None, stop=None):
 
