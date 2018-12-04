@@ -38,7 +38,8 @@ def pretty_print_data(data, fp):
 
 def pack_lines(left_col, right_col, fp, col_width=70):
 
-    wrapper = textwrap.TextWrapper(width=col_width, subsequent_indent="    ")
+    wrapper = textwrap.TextWrapper(width=col_width, subsequent_indent="    ",
+                                   drop_whitespace=False)
     line_tmp = "{:"+ str(col_width) + "s}     {:" + str(col_width) + "s}"
     right_col = [l for t in right_col for l in wrapper.wrap(t)]
     left_col = [l for t in left_col for l in wrapper.wrap(t)]
@@ -95,8 +96,8 @@ def main():
         for source in loader:
             orig_data = source["orig_data"]
             greedy_best_sequences = postprocess(model.decode(source))
-            nbest_seqs = model.beam_decode(
-                source, beam_size=args.beam_size)
+            nbest_seqs, nbest_scores = model.beam_decode(
+                source, beam_size=args.beam_size, return_scores=True)
             nbest_seqs = [postprocess(beam) for beam in nbest_seqs]
 
             for i, data in enumerate(orig_data):
@@ -111,25 +112,20 @@ def main():
                             greedy_best_sequences[i],
                             " "]
  
-                left_col.append(" ")
                 left_col.append("Beam Decoding")
                 left_col.append("-------------")
                 for j in range(args.beam_size):
                     nbest_seq = nbest_seqs[i][j]
-                    left_col.append("[{}] {}".format(j, nbest_seq))
+                    nbest_score = nbest_scores[i,j].item()
+                    left_col.append(
+                        "[{}] ({:3.3f}) {}".format(j, nbest_score, nbest_seq))
                     left_col.append(" ")
 
-                  #  , (seq, score, lp) in enumerate(zip(beam_seqs[b], beam_scores[b], beam_lps[b]), 1):
-#                #    seq_toks = model.decoder.embedding_context.convert_index_tensor(seq)
-#                #    seq_str = postprocess([seq_toks])[0]
-#                #    left_col.append("[{}] ({:3.3f}|{:3.3f}) {}".format(
-#                #        i, score, lp, seq_str))
-#               
                 right_col = ["References",
                              "----------"]
                 for j, ref in enumerate(next(ri), 1):
                     right_col.append("[{}] {}".format(j, ref))
-                    right_col.append("")
+                    right_col.append(" ")
                 
                 pack_lines(left_col, right_col, fp)
 #

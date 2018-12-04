@@ -11,7 +11,7 @@ def postprocess(token_sequences):
     pptexts = []
     for token_seq in token_sequences:
         string = " ".join(token_seq)
-        text = [detokenizer.detokenize(s.split()) 
+        text = [detokenizer.detokenize(s.replace(" </DS>", "").split(" ")) 
                 for s in string.split("<SENT>")]
         pptexts.append(" ".join(text))
     return pptexts
