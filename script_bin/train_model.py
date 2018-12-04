@@ -27,11 +27,14 @@ def main():
         args["trainer"]["train_inputs"], **args["emb"])
 
     print("Loading training data.")
+    if args["trainer"]["shuffle_sents"]:
+        print("Shuffling sentences!")
     train_data = nnsum.data.SummarizationDataset(
         embedding_context.vocab,
         args["trainer"]["train_inputs"],
         targets_dir=args["trainer"]["train_labels"],
-        sentence_limit=args["trainer"]["sentence_limit"])
+        sentence_limit=args["trainer"]["sentence_limit"],
+        shuffle_sents=args["trainer"]["shuffle_sents"])
     train_loader = nnsum.data.SummarizationDataLoader(
         train_data, batch_size=args["trainer"]["batch_size"],
         num_workers=args["trainer"]["loader_workers"])

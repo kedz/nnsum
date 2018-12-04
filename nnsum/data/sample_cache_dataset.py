@@ -6,15 +6,16 @@ from .summarization_dataset import SummarizationDataset
 
 class SampleCacheDataset(SummarizationDataset):
     def __init__(self, vocab, inputs_dir, targets_dir=None, 
-                 references_dir=None, sentence_limit=None,
+                 references_dir=None, sentence_limit=None, shuffle_sents=False,
                  num_samples=25, temperature=.05):
         super(SampleCacheDataset, self).__init__(
             vocab, inputs_dir, targets_dir=targets_dir,
-            references_dir=references_dir, sentence_limit=sentence_limit)
+            references_dir=references_dir, sentence_limit=sentence_limit,
+            shuffle_sents=shuffle_sents)
         self.num_samples = num_samples
         self.temperature = temperature
 
-    def _read_targets(self, raw_inputs_data, inputs_data):
+    def _read_targets(self, raw_inputs_data, inputs_data, perm=None):
         path = self._get_targets_path(raw_inputs_data, inputs_data)
         raw_targets_data = json.loads(path.read_text())
         assert raw_targets_data["id"] == raw_inputs_data["id"]
@@ -38,5 +39,8 @@ class SampleCacheDataset(SummarizationDataset):
         scores = torch.FloatTensor(scores) / self.temperature
         scores = torch.softmax(scores, 0)
         assert labels.size(1) == inputs_data["sentence_lengths"].size(0)
+        
+        if perm is not None:
+            labels = labels[:,perm]
 
         return {"samples": labels, "scores": scores}

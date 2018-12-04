@@ -8,7 +8,8 @@ from collections import defaultdict
 
 class SummarizationDataset(Dataset):
     def __init__(self, vocab, inputs_dir, targets_dir=None, 
-                 references_dir=None, sentence_limit=None):
+                 references_dir=None, sentence_limit=None,
+                 shuffle_sents=False):
 
         if isinstance(inputs_dir, str):
             inputs_dir = pathlib.Path(inputs_dir)
@@ -17,6 +18,7 @@ class SummarizationDataset(Dataset):
         if references_dir and isinstance(references_dir, str):
             references_dir = pathlib.Path(references_dir)
 
+        self._shuffle_sents = shuffle_sents
         self._vocab = vocab
         self._sentence_limit = sentence_limit
         self._inputs = [path for path in inputs_dir.glob("*.json")]
@@ -29,6 +31,10 @@ class SummarizationDataset(Dataset):
         else:
             self._references_paths = None
 
+    @property
+    def shuffle_sents(self):
+        return self._shuffle_sents
+    
     @property
     def vocab(self):
         return self._vocab
@@ -93,7 +99,7 @@ class SummarizationDataset(Dataset):
     def _get_targets_path(self, raw_inputs_data, inputs_data):
         return self._targets_dir / "{}.json".format(inputs_data["id"])
 
-    def _read_targets(self, raw_inputs_data, inputs_data):
+    def _read_targets(self, raw_inputs_data, inputs_data, perm=None):
         path = self._get_targets_path(raw_inputs_data, inputs_data)
         raw_targets_data = json.loads(path.read_text())
         assert raw_targets_data["id"] == raw_inputs_data["id"]
@@ -104,19 +110,44 @@ class SummarizationDataset(Dataset):
         else:
             targets = torch.LongTensor(raw_targets_data["labels"])
         assert targets.size(0) == inputs_data["sentence_lengths"].size(0)
+        if perm is not None:
+            targets = targets[perm]
 
         return targets
         
     def __getitem__(self, index):
 
         raw_inputs_data = json.loads(self._inputs[index].read_text())
-        inputs_data = self._read_inputs(raw_inputs_data)
+        inp_data = self._read_inputs(raw_inputs_data)
+
+        if self.shuffle_sents:
+            num_sents = inp_data["sentence_lengths"].size(0)
+            perm = I = torch.randperm(num_sents)
+            inp_data["sentence_lengths"] = inp_data["sentence_lengths"][I]
+            inp_data["pretty_sentence_lengths"] = \
+                inp_data["pretty_sentence_lengths"][I]
+            inp_data["document"] = inp_data["document"][I]
+            inp_data["pretty_sentences"] = \
+                [inp_data["pretty_sentences"][i] for i in I.tolist()]
+        else:
+            perm = None
+
+
+        for isent, slen, psent, pslen in zip(inp_data["document"], 
+                                      inp_data["sentence_lengths"],
+                                      inp_data["pretty_sentences"],
+                                      inp_data["pretty_sentence_lengths"]):
+            try:
+                assert isent.tolist().index(0) == slen
+            except ValueError:
+                assert isent.size(0) == slen
         
         if self._targets_dir:
-            targets_data = self._read_targets(raw_inputs_data, inputs_data)
-            inputs_data["targets"] = targets_data
+            targets_data = self._read_targets(raw_inputs_data, inp_data,
+                                              perm=perm)
+            inp_data["targets"] = targets_data
 
         if self._references_paths:
-            inputs_data["reference_paths"] = self._references_paths[index]
+            inp_data["reference_paths"] = self._references_paths[index]
 
-        return inputs_data
+        return inp_data

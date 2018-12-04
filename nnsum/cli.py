@@ -140,6 +140,9 @@ def training_argparser():
     train_parser.add_argument("--summary-length", type=int, default=100)
     train_parser.add_argument(
         "--remove-stopwords", action="store_true", default=False)
+    train_parser.add_argument(
+        "--shuffle-sents", action="store_true", default=False,
+        help="Shuffle training sentence order.")
     train_parser.add_argument("--model", type=pathlib.Path, default=None,
                               required=False)
     train_parser.add_argument("--results", type=pathlib.Path, default=None,
