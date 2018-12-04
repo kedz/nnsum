@@ -1,22 +1,33 @@
 import torch
 import torch.nn as nn
 
+from .no_attention import NoAttention
+from .dot_attention import DotAttention
+
 
 class RNNDecoder(nn.Module):
     def __init__(self, embedding_context, 
                  hidden_dim=512, num_layers=1,
-                 rnn_cell="GRU"):
+                 rnn_cell="GRU", attention="none"):
         super(RNNDecoder, self).__init__()
 
         rnn_cell = rnn_cell.upper()
         assert rnn_cell in ["LSTM", "GRU", "RNN"]
         assert hidden_dim > 0
         assert num_layers > 0
+        assert attention in ["none", "dot"]
 
         self._emb_ctx = embedding_context        
         self._rnn = getattr(nn, rnn_cell)(
             embedding_context.output_size, hidden_dim, num_layers=num_layers)
-        self._predictor = nn.Linear(hidden_dim, len(self._emb_ctx.vocab))
+
+        pred_dim = hidden_dim if attention == "none" else 2 * hidden_dim
+        self._predictor = nn.Linear(pred_dim, len(self._emb_ctx.vocab))
+      
+        if attention == "none":
+            self._attention = NoAttention()
+        else:
+            self._attention = DotAttention()
        
     @property
     def rnn(self):
@@ -32,8 +43,9 @@ class RNNDecoder(nn.Module):
 
     def forward(self, inputs, context, state):
         decoder_output, state = self._rnn(self._emb_ctx(inputs), state)
-        logits = self._predictor(decoder_output)
-        return logits, {}, state
+        predictor_input, attn = self._attention(context, decoder_output)
+        logits = self._predictor(predictor_input)
+        return logits, attn, state
 
     def decode(self, context, state, max_steps=1000, return_log_probs=False):
         batch_size = context.size(0)

@@ -70,7 +70,7 @@ class EncoderDecoderModel(nn.Module):
         return output
 
     def beam_decode(self, inputs, beam_size=8, sorted=False, 
-                    return_tokens=True, max_steps=300):
+                    return_tokens=True, return_scores=False, max_steps=300):
 
         if not sorted:
             inputs, inv_order = self._sort_inputs(inputs)
@@ -80,6 +80,7 @@ class EncoderDecoderModel(nn.Module):
             beam = BeamSearch(self.decoder, state, context, 
                               beam_size=beam_size, max_steps=max_steps)
             beam.search()
+            beam.sort_by_score()
             output = beam.candidates[inv_order]
         else:
             context, state = self._encoder(
@@ -88,10 +89,13 @@ class EncoderDecoderModel(nn.Module):
             beam = BeamSearch(self.decoder, state, context, 
                               beam_size=beam_size, max_steps=max_steps)
             beam.search()
+            beam.sort_by_score()
             output = beam.candidates
 
         if return_tokens:
             output = self.decoder.embedding_context.convert_index_tensor(
                 output)
-
-        return output
+        if return_scores:
+            return output, beam.scores
+        else:
+            return output

@@ -20,10 +20,13 @@ def new_rnn_decoder_parser():
     parser.add_argument("--num-layers", type=int, default=2)
     parser.add_argument("--rnn-cell", choices=["lstm", "gru", "rnn"], 
                         default="gru")
+    parser.add_argument("--attention", choices=["dot", "none"],
+                        default="none", type=str)
     return parser
 
 def rnn_decoder_from_args(args, embedding_context):
     return RNNDecoder(embedding_context, hidden_dim=args.hidden_dim, 
-                      num_layers=args.num_layers, rnn_cell=args.rnn_cell)
+                      num_layers=args.num_layers, rnn_cell=args.rnn_cell,
+                      attention=args.attention)
 
 
