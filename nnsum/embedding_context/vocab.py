@@ -1,6 +1,11 @@
 class Vocab(object):
-    def __init__(self, index2tokens, tokens2index, pad="_PAD_", unk="_UNK_",
-                 start=None, stop=None):
+    def __init__(self, index2tokens, tokens2index, pad=None, unk=None,
+                 start=None, stop=None, counts=None):
+
+        # TODO add checks and tests to constructor. I.e. no duplicate tokens
+        # or indices. Assert pad,unk, start, and stop are in dict if
+        # they are not none. Think about multivocab stop symbols.
+
         self._index2tokens = index2tokens
         self._tokens2index = tokens2index
         self._pad = pad
@@ -11,6 +16,7 @@ class Vocab(object):
         self._unk_idx = self._tokens2index.get(unk, None)
         self._start_idx = self._tokens2index.get(start, None)
         self._stop_idx = self._tokens2index.get(stop, None)
+        self._counts = counts
 
     @staticmethod
     def from_vocab_size(vocab_size, **kwargs):
@@ -18,24 +24,24 @@ class Vocab(object):
         return Vocab.from_word_list(word_list, **kwargs)
 
     @staticmethod
-    def from_word_list(word_list, pad="_PAD_", unk="_UNK_", 
-                       start=None, stop=None):
+    def from_word_list(word_list, pad=None, unk=None, 
+                       start=None, stop=None, counts=None):
 
-        if stop is not None:
+        if stop is not None and stop not in word_list:
             word_list = [stop] + word_list
 
-        if start is not None:
+        if start is not None and start not in word_list:
             word_list = [start] + word_list
 
-        if not unk is None:
+        if unk is not None and unk not in word_list:
             word_list = [unk] + word_list
         
-        if not pad is None:
+        if pad is not None and pad not in word_list:
             word_list = [pad] + word_list
 
         word2index = {w: i for i, w in enumerate(word_list)}
         return Vocab(word_list, word2index, pad=pad, unk=unk, 
-                     start=start, stop=stop)
+                     start=start, stop=stop, counts=counts)
 
     def __getitem__(self, word_or_index):
         if isinstance(word_or_index, str):
@@ -47,7 +53,7 @@ class Vocab(object):
         index = self._tokens2index.get(token, self._unk_idx)
         if index is None:
             raise Exception(
-                "Found unknown token: {} but no unknown index set".format(
+                "Found unknown token ({}) but no unknown index is set.".format(
                     token))
         else:
             return index
@@ -95,3 +101,13 @@ class Vocab(object):
             
     def __contains__(self, token):
         return token in self._tokens2index
+
+    def count(self, token_or_index):
+        if isinstance(token_or_index, int):
+            token = self[token_or_index]
+        else:
+            token = token_or_index
+        if self._counts is not None:
+            return self._counts.get(token, 0)
+        else:
+            raise Exception("Vocab object has no token count data.")
