@@ -1,6 +1,0 @@
-from .rnn_sentence_extractor import RNNSentenceExtractor
-from .seq2seq_sentence_extractor import Seq2SeqSentenceExtractor
-from .cheng_and_lapata_sentence_extractor import (
-    ChengAndLapataSentenceExtractor)
-from .summarunner_sentence_extractor import SummaRunnerSentenceExtractor
-from .transformer_sentence_extractor import TransformerSentenceExtractor
