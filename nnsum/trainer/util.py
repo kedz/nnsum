@@ -1,8 +1,8 @@
 import torch
 import numpy as np
 import ujson as json
+from collections import OrderedDict
 from multiprocessing import Pool
-
 import logging
 
 
@@ -32,12 +32,36 @@ def compute_class_weights(labels_dir, num_procs, sentence_limit=None):
               flush=True)
         label_counts += result
 
-#    for item in dataset:
-#        labels, counts = np.unique(
-#            item["targets"].numpy(), return_counts=True)
-#        for label, count in zip(labels, counts):
-#            label_counts[label] += count
-    logging.info(" Counts y=0: {}, y=1 {}".format(*label_counts))
-    weight = label_counts[0] / label_counts[1]
-    logging.info(" Reweighting y=1 by {}\n".format(weight))
-    return weight
+def get_label_counts(dataloader, pad_index=-1):
+    counts = OrderedDict()
+    for name, vocab in dataloader.target_vocabs.items():
+        counts[name] = torch.zeros(len(vocab))
+    for batch in dataloader:
+        for name, labels in batch["targets"].items():
+            labels = labels.detach().numpy()
+            for l, c in zip(*np.unique(labels, return_counts=True)):
+                l = int(l)
+                c = int(c)
+                if l == pad_index:
+                    continue
+                counts[name][l] += c
+    for cls in counts.keys():
+        d = OrderedDict()
+        for i, c in enumerate(counts[cls].tolist()):
+            label = dataloader.target_vocabs[cls][i]
+            d[label] = c
+        counts[cls] = d
+    return counts
+
+def get_balanced_weights(label_counts, gpu=-1):
+    named_weights = OrderedDict()
+    for cls, counts in label_counts.items():
+        num_labels = len(counts)
+        num_samples = sum(counts.tolist())
+        weights = torch.FloatTensor(num_labels)
+        for i, count in enumerate(counts.tolist()):
+            weights[i] = num_samples / (num_labels * count)
+        if gpu > -1:
+            weights = weights.cuda(gpu)
+        named_weights[cls] = weights
+    return named_weights
