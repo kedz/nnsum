@@ -3,7 +3,7 @@ import torch
 
 class BeamSearch(object):
     def __init__(self, decoder, init_state, context, beam_size=8,
-                 max_steps=1000):
+                 max_steps=1000, rescoring_func=None):
 
         self._batch_size = batch_size = context.size(0)
         total_beam_size = batch_size * beam_size
@@ -15,6 +15,10 @@ class BeamSearch(object):
         self._beam_size = beam_size
         self._stop_index = decoder.embedding_context.vocab.stop_index
         self._pad_index = decoder.embedding_context.vocab.pad_index
+
+        if rescoring_func is not None:
+            self._rescore_beam = rescoring_func
+
 
         self._index_offset = torch.arange(
             0, self._batch_size, device=context.device).view(-1, 1)

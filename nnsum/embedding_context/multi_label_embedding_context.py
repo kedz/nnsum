@@ -29,6 +29,12 @@ class MultiLabelEmbeddingContext(nn.Module):
     def named_vocabs(self):
         return self.vocab
 
+    def label_frequencies(self):
+        freqs = OrderedDict()
+        for ec in self.embedding_contexts:
+            freqs[ec.name] = ec.label_frequencies()[ec.name]
+        return freqs
+
     def forward(self, inputs):
         
         output = OrderedDict()
@@ -51,3 +57,7 @@ class MultiLabelEmbeddingContext(nn.Module):
                 "Input must be a list, tuple, or dict, 2dd or 3d tensor.")
 
         return output
+
+    def initialize_parameters(self):
+        for ec in self.embedding_contexts:
+            ec.initialize_parameters()

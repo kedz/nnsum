@@ -2,4 +2,4 @@ from .seq2seq_mle_trainer import seq2seq_mle_trainer
 from .seq2clf_mle_trainer import seq2clf_mle_trainer
 from .labels_mle_trainer import labels_mle_trainer
 from .labels_raml_trainer import labels_raml_trainer
-from .util import compute_class_weights
+from .util import compute_class_weights, get_label_counts, get_balanced_weights

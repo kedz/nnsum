@@ -51,3 +51,7 @@ class MultiEmbeddingContext(nn.Module):
             embs = sum(embs) / len(embs)
 
         return embs
+
+    def initialize_parameters(self):
+        for ec in self.embedding_contexts:
+            ec.initialize_parameters()

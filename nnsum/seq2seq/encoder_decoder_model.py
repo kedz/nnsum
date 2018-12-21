@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from .beam_search import BeamSearch
 import numpy as np
 
@@ -18,14 +19,54 @@ class EncoderDecoderModel(nn.Module):
     def decoder(self):
         return self._decoder
 
-    def forward(self, inputs):
+    def xentropy(self, batch, reduction="mean", return_attention=False):
+
+        logits, attn = self.forward(batch, return_attention=True)
+        pad_index = self.decoder.embedding_context.vocab.pad_index
+
+        elem_xent = F.cross_entropy(
+            logits.permute(0, 2, 1), 
+            batch["target_output_features"]["tokens"].t(),
+            ignore_index=pad_index,
+            reduction="none")
+        
+        if reduction == "mean":
+            num_tokens = batch["target_lengths"].sum().float()
+            mean_xent = elem_xent.sum() / num_tokens
+            result = mean_xent
+        elif reduction == "sum":
+            result = elem_xent.sum()
+        elif reduction == "none":
+            result = elem_xent
+        else:
+            raise Exception("reduction must be 'mean', 'sum', or 'none'.")
+
+        if return_attention:
+            return result, attn
+        else:
+            return result
+
+    def forward(self, inputs, return_attention=False):
         context, state = self._encoder(
             inputs["source_features"], 
             inputs["source_lengths"]) 
 
+        if inputs["multi_ref"]:
+            context = context[inputs["target_source_ids"]]
+            state = state[:,inputs["target_source_ids"]] 
+            mask = inputs.get("source_mask", None)
+            if mask is not None:
+                mask = mask[inputs["target_source_ids"]]
+        else:
+            mask = inputs.get("source_mask", None)
+
         logits, attn, state = self._decoder(
-            inputs["target_input_features"], context, state)
-        return logits
+            inputs["target_input_features"], context, state, context_mask=mask)
+
+        if return_attention:
+            return logits, attn
+        else:
+            return logits
 
     def predict(self, inputs):
         context, state = self._encoder(
@@ -49,19 +90,19 @@ class EncoderDecoderModel(nn.Module):
                       "source_features": src_features}
         return new_inputs, inv_order
 
-    def decode(self, inputs, sorted=False, return_tokens=True):
+    def decode(self, inputs, sorted=False, return_tokens=True, max_steps=100):
         if not sorted:
             inputs, inv_order = self._sort_inputs(inputs)
             context, state = self._encoder(
                 inputs["source_features"], 
                 inputs["source_lengths"]) 
-            output = self._decoder.decode(context, state)
+            output = self._decoder.decode(context, state, max_steps=max_steps)
             output = output[inv_order]
         else:
             context, state = self._encoder(
                 inputs["source_features"], 
                 inputs["source_lengths"]) 
-            output = self._decoder.decode(context, state)
+            output = self._decoder.decode(context, state, max_steps=max_steps)
 
         if return_tokens:
             output = self.decoder.embedding_context.convert_index_tensor(
@@ -70,7 +111,8 @@ class EncoderDecoderModel(nn.Module):
         return output
 
     def beam_decode(self, inputs, beam_size=8, sorted=False, 
-                    return_tokens=True, return_scores=False, max_steps=300):
+                    return_tokens=True, return_scores=False, max_steps=300,
+                    rescoring_func=None):
 
         if not sorted:
             inputs, inv_order = self._sort_inputs(inputs)
@@ -78,7 +120,8 @@ class EncoderDecoderModel(nn.Module):
                 inputs["source_features"], 
                 inputs["source_lengths"]) 
             beam = BeamSearch(self.decoder, state, context, 
-                              beam_size=beam_size, max_steps=max_steps)
+                              beam_size=beam_size, max_steps=max_steps,
+                              rescoring_func=rescoring_func)
             beam.search()
             beam.sort_by_score()
             output = beam.candidates[inv_order]
@@ -86,8 +129,10 @@ class EncoderDecoderModel(nn.Module):
             context, state = self._encoder(
                 inputs["source_features"], 
                 inputs["source_lengths"]) 
+
             beam = BeamSearch(self.decoder, state, context, 
-                              beam_size=beam_size, max_steps=max_steps)
+                              beam_size=beam_size, max_steps=max_steps,
+                              rescoring_func=rescoring_func)
             beam.search()
             beam.sort_by_score()
             output = beam.candidates
@@ -99,3 +144,10 @@ class EncoderDecoderModel(nn.Module):
             return output, beam.scores
         else:
             return output
+
+    def initialize_parameters(self):
+        
+        print(" Initializing encoder parameters.")
+        self.encoder.initialize_parameters()
+        print(" Initializing decoder parameters.")
+        self.decoder.initialize_parameters()

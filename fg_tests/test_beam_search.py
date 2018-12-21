@@ -65,9 +65,9 @@ def test_gru_no_attn_beam_search_top1_matches_decode():
     init_state = torch.FloatTensor(1, batch_size, hidden_dim).normal_()
     context = torch.FloatTensor(batch_size, 4, hidden_dim).normal_() 
 
-    ref_decode, ref_lps = decoder.decode(context, init_state, 
-                                         max_steps=max_steps,
-                                         return_log_probs=True)
+    ref_decode, _, ref_lps = decoder.decode(context, init_state, 
+                                            max_steps=max_steps,
+                                            return_log_probs=True)
 
     beam = BeamSearch(decoder, init_state, context, beam_size=beam_size,
                       max_steps=max_steps)

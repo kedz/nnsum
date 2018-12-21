@@ -3,8 +3,9 @@ from ignite.metrics.metric import Metric
 
 
 class Loss(Metric):
-    def __init__(self, output_transform=lambda x: x):
+    def __init__(self, output_transform=lambda x: x, zero_ok=False):
         super(Loss, self).__init__(output_transform)
+        self._zero_ok = zero_ok
 
     def reset(self):
         self._sum = 0
@@ -17,6 +18,10 @@ class Loss(Metric):
 
     def compute(self):
         if self._num_examples == 0:
-            raise NotComputableError(
-                'Loss must have at least one example before it can be computed')
+            if self._zero_ok:
+                return 0.
+            else:
+                raise NotComputableError(
+                    'Loss must have at least one example before it can be ' \
+                    'computed')
         return self._sum / self._num_examples

@@ -30,3 +30,13 @@ class RNNEncoder(nn.Module):
         context_packed, state = self._rnn(emb_packed)
         context, _ = pad_packed_sequence(context_packed, batch_first=True)
         return context, state
+
+    def initialize_parameters(self):
+        print(" Initializing encoder embedding context parameters.")
+        self.embedding_context.initialize_parameters()
+        print(" Initializing encoder parameters.")
+        for name, param in self.rnn.named_parameters():
+            if "weight" in name:
+                nn.init.xavier_normal_(param)
+            else:
+                nn.init.constant_(param, 1.)

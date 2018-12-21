@@ -12,16 +12,11 @@ class EmbeddingContext(nn.Module):
     
     @staticmethod
     def update_command_line_options(parser):
-        parser.add_argument("--embedding-size", type=int, required=True)
         parser.add_argument(
             "--pretrained-embeddings", type=str, required=False,
             default=None)
         parser.add_argument("--top-k", type=int, required=False, default=None)
         parser.add_argument("--at-least", type=int, required=False, default=1)
-        parser.add_argument(
-            "--word-dropout", type=float, required=False, default=0.0)
-        parser.add_argument(
-            "--embedding-dropout", type=float, required=False, default=0.0)
         parser.add_argument(
             "--update-rule", type=str, required=False, default="update-all",
             choices=["update-all", "fix-all"],)
@@ -35,17 +30,28 @@ class EmbeddingContext(nn.Module):
                                       start=start, stop=stop)    
         return EmbeddingContext(vocab, embedding_size, **kwargs)
 
-    def __init__(self, vocab, embedding_size, word_dropout=0.0,
+    def __init__(self, vocab, embedding_size, 
+                 token_dropout=0.0, token_dropout_mode="zero",
                  embedding_dropout=0.0, initializer=None, 
                  update_rule="update-all", name=None,
                  transpose=True):
         super(EmbeddingContext, self).__init__()
 
+        if token_dropout_mode not in ["zero", "unknown"]:
+            raise ValueError(
+                "token_dropout_mode can only be 'zero' or 'unknown'.")
+
+        if token_dropout_mode == "unknown" and vocab.unknown_index is None: 
+            raise ValueError(
+                "If token_dropout_mode == 'unknown', vocab must set" \
+                " unknown_token")
+
         self.embeddings = nn.Embedding(
             len(vocab), embedding_size, padding_idx=vocab.pad_index)
 
         self._vocab = vocab
-        self._word_dropout = word_dropout
+        self._token_dropout = token_dropout
+        self._token_dropout_mode = token_dropout_mode
         self._embedding_dropout = embedding_dropout
         self._embedding_size = embedding_size
         self._update_rule = update_rule
@@ -66,6 +72,13 @@ class EmbeddingContext(nn.Module):
         if update_rule == "fix-all":
             self.embeddings.weight.requires_grad = False
 
+    def initialize_parameters(self):
+
+        print(" Initializing feature context: {}".format(self.name))
+        nn.init.normal_(self.embeddings.weight)
+        if self.vocab.pad_index is not None:
+            self.embeddings.weight[self.vocab.pad_index].data.fill_(0)
+
     @property
     def name(self):
         return self._name
@@ -83,9 +96,13 @@ class EmbeddingContext(nn.Module):
         return OrderedDict({self.name: self.vocab})
  
     @property
-    def word_dropout(self):
-        return self._word_dropout
+    def token_dropout(self):
+        return self._token_dropout
    
+    @property
+    def token_dropout_mode(self):
+        return self._token_dropout_mode
+
     @property
     def embedding_dropout(self):
         return self._embedding_dropout
@@ -98,11 +115,21 @@ class EmbeddingContext(nn.Module):
     def update_rule(self):
         return self._update_rule
 
-    def apply_token_dropout(self, inputs, drop_prob):
-        probs = inputs.data.new().resize_(inputs.size()[:-1]).fill_(drop_prob) 
-        mask = torch.bernoulli(probs).byte().unsqueeze(-1)
-        inputs.data.masked_fill_(mask, 0)
-        return inputs
+    def _apply_unknown_mode_token_dropout(self, inputs):
+
+        if self.training and self.token_dropout > 0.:
+            
+            mask = torch.distributions.Bernoulli(
+                probs=self.token_dropout).sample(sample_shape=inputs.size())
+            mask = mask.byte()
+            
+            if str(inputs.device) != "cpu":
+                mask = mask.cuda(inputs.device)
+
+            return inputs.masked_fill(mask, self._vocab.unknown_index)
+            
+        else:
+            return inputs
 
     def forward(self, inputs):
 
@@ -111,23 +138,21 @@ class EmbeddingContext(nn.Module):
         else:
             tensor_inputs = inputs
 
+        if self.token_dropout_mode == "unknown":
+            tensor_inputs = self._apply_unknown_mode_token_dropout(
+                tensor_inputs)
+
         if tensor_inputs.dim() == 2:
             if self.transpose:
                 tensor_inputs = tensor_inputs.t()
             emb = self.embeddings(tensor_inputs)
         else:
             raise Exception("Input must be a dict or 2d tensor.")           
-#        elif tensor_inputs.dim() == 3:
-#            batch_size, seq_size1, seq_size2 = inputs.size()
-#            ss = inputs.size(1)
-#            ts = inputs.size(2)
-#            tensor_inputs_flat = tensor_inputs.view(bs * ss, ts)
-#
-#            emb = self.embeddings(inputs_flat).view(bs, ss, ts, -1)
         
+        if self.token_dropout_mode == "zero":
+            emb = F.dropout2d(emb, p=self.token_dropout, 
+                              training=self.training, inplace=True)
         emb = F.dropout(emb, p=self.embedding_dropout, training=self.training)
-        if self.word_dropout > 0:
-            emb = self.apply_token_dropout(emb, self.word_dropout)
 
         return emb
 
@@ -140,20 +165,6 @@ class EmbeddingContext(nn.Module):
         for n, p in self.embeddings.named_parameters(memo, submod_prefix):
             if p.requires_grad:
                 yield n, p
-
-    def initialize_parameters(self, logger=None):
-        if logger:
-            logger.info(" EmbeddingContext initialization started.")
-        if self.initializer is not None:
-            if logger:
-                logger.info(" Initializing with pretrained embeddings.")
-            self.embeddings.weight.data.copy_(self.initializer)
-        else:
-            if logger:
-                logger.info(" Initializing with random normal.")
-            nn.init.normal_(self.embeddings.weight)    
-        if logger:
-            logger.info(" EmbeddingContext initialization finished.")
 
     def convert_index_tensor(self, tensor, drop_pad=True):
         assert tensor.dim() in [1, 2, 3]

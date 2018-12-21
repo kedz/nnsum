@@ -5,7 +5,7 @@ from ignite.engine import Engine, Events
 from ignite._utils import _to_hours_mins_secs
 from ignite.handlers import ModelCheckpoint
 
-from nnsum.metrics import Loss
+from nnsum.metrics import Loss, NISTScore
 from nnsum.sequence_cross_entropy import sequence_cross_entropy
 
 from colorama import Fore, Style
@@ -14,15 +14,13 @@ import ujson as json
 import time
 
 
-
-def seq2seq_mle_trainer(model, optimizer, train_dataloader,
+def seq2seq_mle_trainer(model, optimizer_scheduler, train_dataloader,
                         validation_dataloader, max_epochs=10,
                         grad_clip=5, gpu=-1, model_path=None,
                         results_path=None):
-                        #, teacher_forcing=-1,
-                        #create_trainer_fn=None):
 
-    trainer = create_trainer(model, optimizer, grad_clip=grad_clip, gpu=gpu)
+    trainer = create_trainer(model, optimizer_scheduler, grad_clip=grad_clip, 
+                             gpu=gpu)
     evaluator = create_evaluator(model, validation_dataloader, gpu=gpu)
 
     xentropy = Loss(
@@ -30,11 +28,19 @@ def seq2seq_mle_trainer(model, optimizer, train_dataloader,
     xentropy.attach(trainer, "x-entropy")
     xentropy.attach(evaluator, "x-entropy")
 
+    nist_score = NISTScore(
+        output_transform=lambda o: (o["outputs"], o["references"]))
+    nist_score.attach(evaluator, "generation metrics")
+
     @trainer.on(Events.STARTED)
     def init_history(trainer):
         trainer.state.training_history = {"x-entropy": []}
-        trainer.state.validation_history = {"x-entropy": []}
+        trainer.state.validation_history = {"x-entropy": [],
+                                            "nist": [],
+                                            "bleu": []}
         trainer.state.min_valid_xent = float("inf")
+        trainer.state.max_valid_nist = float("-inf")
+        trainer.state.max_valid_bleu = float("-inf")
 
     @trainer.on(Events.EPOCH_STARTED)
     def log_epoch_start_time(trainer):
@@ -91,34 +97,41 @@ def seq2seq_mle_trainer(model, optimizer, train_dataloader,
         else:
             valid_metric_strings.append(
                 "X-Entropy={:.3f}".format(valid_metrics["x-entropy"]))
- 
-#        if valid_metrics["rouge"]["rouge-1"] > trainer.state.max_valid_rouge1:
-#            valid_metric_strings.append(
-#                Fore.GREEN + \
-#                "Rouge-1={:.3f}".format(valid_metrics["rouge"]["rouge-1"]) + \
-#                Style.RESET_ALL)
-#            trainer.state.max_valid_rouge1 = valid_metrics["rouge"]["rouge-1"]
-#        else:
-#            valid_metric_strings.append(
-#                "Rouge-1={:.3f}".format(valid_metrics["rouge"]["rouge-1"]))
-#        
-#        if valid_metrics["rouge"]["rouge-2"] > trainer.state.max_valid_rouge2:
-#            valid_metric_strings.append(
-#                Fore.GREEN + \
-#                "Rouge-2={:.3f}".format(valid_metrics["rouge"]["rouge-2"]) + \
-#                Style.RESET_ALL)
-#            trainer.state.max_valid_rouge2 = valid_metrics["rouge"]["rouge-2"]
-#        else:
-#            valid_metric_strings.append(
-#                "Rouge-2={:.3f}".format(valid_metrics["rouge"]["rouge-2"]))
-#        
+
+        cur_nist = valid_metrics["generation metrics"]["NIST score"]
+        cur_bleu = valid_metrics["generation metrics"]["BLEU score"]
+        if cur_nist > trainer.state.max_valid_nist:
+            valid_metric_strings.append(
+                Fore.GREEN + \
+                "NIST score={:.3f}".format(cur_nist) + \
+                Style.RESET_ALL)
+            trainer.state.max_valid_nist = cur_nist
+        else:
+            valid_metric_strings.append(
+                "NIST score={:.3f}".format(cur_nist))
+        if cur_bleu > trainer.state.max_valid_bleu:
+            valid_metric_strings.append(
+                Fore.GREEN + \
+                "BLEU score={:.3f}".format(cur_bleu) + \
+                Style.RESET_ALL)
+            trainer.state.max_valid_bleu = cur_bleu
+        else:
+            valid_metric_strings.append(
+                "BLEU score={:.3f}".format(cur_bleu))
+
         print("Epoch[{}] Validation {}".format(
             trainer.state.epoch,
             " ".join(valid_metric_strings))) 
 
         valid_history["x-entropy"].append(valid_metrics["x-entropy"])
-        #valid_history["rouge-1"].append(valid_metrics["rouge"]["rouge-1"])
-        #valid_history["rouge-2"].append(valid_metrics["rouge"]["rouge-2"])
+        valid_history["nist"].append(cur_nist)
+        valid_history["bleu"].append(cur_bleu)
+
+        optimizer_scheduler.step(
+            valid_history[optimizer_scheduler.metric][-1])
+
+        
+
 
         hrs, mins, secs = _to_hours_mins_secs(
             time.time() - trainer.state.start_time)
@@ -135,13 +148,14 @@ def seq2seq_mle_trainer(model, optimizer, train_dataloader,
                             "validation": trainer.state.validation_history}))
 
     if model_path:
-        checkpoint = create_checkpoint(model_path)
+        checkpoint = create_checkpoint(model_path, 
+                                       metric_name=optimizer_scheduler.metric)
         trainer.add_event_handler(
             Events.EPOCH_COMPLETED, checkpoint, {"model": model})
 
     trainer.run(train_dataloader, max_epochs=max_epochs)
 
-def create_trainer(model, optimizer, grad_clip=5, gpu=-1):
+def create_trainer(model, optimizer_scheduler, grad_clip=5, gpu=-1):
 
     pad_index = 0
 
@@ -149,49 +163,47 @@ def create_trainer(model, optimizer, grad_clip=5, gpu=-1):
         if gpu > -1: 
             _seq2seq2gpu(batch, gpu)
         model.train()
-        optimizer.zero_grad()
-        logits = model(batch)
-        
-        tgts = batch["target_output_features"]["tokens"].t()
+        optimizer_scheduler.optimizer.zero_grad()
+        total_xent = model.xentropy(batch, reduction="sum")
         total_tokens = batch["target_lengths"].sum().item()
-
-        tot_xent = sequence_cross_entropy(logits, tgts, pad_index=pad_index)
         avg_xent = tot_xent / total_tokens
         avg_xent.backward()
         
         for param in model.parameters():
             param.grad.data.clamp_(-grad_clip, grad_clip)
-        optimizer.step()
+        optimizer_scheduler.optimizer.step()
 
-        return {"total_xent": tot_xent, 
+        return {"total_xent": total_xent, 
                 "total_tokens": total_tokens}
 
     trainer = Engine(_update)
    
     return trainer
 
-def create_evaluator(model, dataloader, gpu=-1):
+def create_evaluator(model, dataloader, eval_decoder=True, gpu=-1):
 
-    pad_index = 0
+    pad_index = model.decoder.embedding_context.vocab.pad_index
 
     def _evaluator(engine, batch):
 
         if gpu > -1: 
             _seq2seq2gpu(batch, gpu)
-
         model.eval()
 
         with torch.no_grad():
-
-            logits = model(batch)
-            tgts = batch["target_output_features"]["tokens"].t()
+            total_xent = model.xentropy(batch, reduction="sum")
             total_tokens = batch["target_lengths"].sum().item()
 
-            tot_xent = sequence_cross_entropy(logits, tgts, 
-                                              pad_index=pad_index)
+            result = {"total_xent": total_xent, "total_tokens": total_tokens}
+            
+            if eval_decoder:
+                decoded_sequences = model.decode(batch, sorted=True)
+                result["outputs"] = [seq for seq in decoded_sequences]
+                result["references"] = [[ref["tokens"]["tokens"] 
+                                         for ref in ex[1]["references"]]
+                                        for ex in batch["orig_data"]]
 
-        return {"total_xent": tot_xent, 
-                "total_tokens": total_tokens}
+            return result
 
     return Engine(_evaluator)
 
@@ -201,7 +213,10 @@ def create_checkpoint(model_path, metric_name="x-entropy"):
 
     def _score_func(trainer):
         model_idx = trainer.state.epoch - 1
-        return -trainer.state.validation_history[metric_name][model_idx]
+        loss = trainer.state.validation_history[metric_name][model_idx]
+        if metric_name == "x-entropy":
+            loss = -loss
+        return loss
 
     checkpoint = ModelCheckpoint(dirname, prefix, score_function=_score_func,
                                  require_empty=False, score_name=metric_name)
@@ -212,6 +227,7 @@ def _seq2seq2gpu(batch, gpu):
     for feat in sf:
         sf[feat] = sf[feat].cuda(gpu)
     batch["source_lengths"] = batch["source_lengths"].cuda(gpu)
+    batch["source_mask"] = batch["source_mask"].cuda(gpu)
     batch["target_lengths"] = batch["target_lengths"].cuda(gpu)
     tif = batch["target_input_features"]
     for feat in tif:
@@ -219,3 +235,7 @@ def _seq2seq2gpu(batch, gpu):
     tof = batch["target_output_features"]
     for feat in tof:
         tof[feat] = tof[feat].cuda(gpu)
+
+    if batch["multi_ref"]:
+        batch["target_source_ids"] = batch["target_source_ids"].cuda(gpu)
+        batch["num_references"] = batch["num_references"].cuda(gpu)

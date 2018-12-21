@@ -22,11 +22,14 @@ def new_rnn_decoder_parser():
                         default="gru")
     parser.add_argument("--attention", choices=["dot", "none"],
                         default="none", type=str)
+    parser.add_argument("--copy-attention", choices=["none", "reuse"],
+                        type=str)
     return parser
 
 def rnn_decoder_from_args(args, embedding_context):
     return RNNDecoder(embedding_context, hidden_dim=args.hidden_dim, 
                       num_layers=args.num_layers, rnn_cell=args.rnn_cell,
-                      attention=args.attention)
+                      attention=args.attention, 
+                      copy_attention=args.copy_attention)
 
 
