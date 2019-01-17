@@ -34,14 +34,6 @@ def create_trainer(model, optimizer, pos_weight=None, grad_clip=5, gpu=-1):
         
         if pos_weight is not None:
             mask.data.masked_fill_(batch.targets.data.eq(1), pos_weight)
-        # scores has already been normalized to be probs. 
-        # print(batch.scores)
-        #print(mask.size())
-        #print(batch.targets.size())
-        #print(batch.scores.size())
-        # exit()
-
-        ### yan TODO tensorize this part ###
 
         bce = F.binary_cross_entropy_with_logits(
             logits.unsqueeze(1).repeat(1,batch.targets.size(1),1), batch.targets.float(),
