@@ -53,7 +53,10 @@ def main():
         num_workers=args["trainer"]["loader_workers"])
 
     if args["trainer"]["weighted"]:
-        weight = nnsum.trainer.compute_class_weights(val_data)
+        weight = nnsum.trainer.compute_class_weights(
+            args["trainer"]["train_labels"],
+            args["trainer"]["loader_workers"],
+            sentence_limit=args["trainer"]["sentence_limit"])
     else:
         weight = None
 
