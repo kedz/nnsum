@@ -1,133 +1,177 @@
 import torch
+import torch.nn.functional as F
+import numpy as np
+
+from .search_algo import DecoderSearch
+from .search_state import SearchState
+from .rnn_state import RNNState
 
 
-class BeamSearch(object):
-    def __init__(self, decoder, init_state, context, beam_size=8,
-                 max_steps=1000, rescoring_func=None):
+class BeamSearch(DecoderSearch):
+    def __init__(self, decoder, encoder_state, context, context_mask=None,
+                 beam_size=8, max_steps=1000, rescoring_func=None,
+                 return_incomplete=False, sort_by_score=True):
 
-        self._batch_size = batch_size = context.size(0)
-        total_beam_size = batch_size * beam_size
-
-        self._decoder = decoder
-        self._finished = False
-        self._max_steps = max_steps
-        self._current_step = 0
         self._beam_size = beam_size
-        self._stop_index = decoder.embedding_context.vocab.stop_index
-        self._pad_index = decoder.embedding_context.vocab.pad_index
-
         if rescoring_func is not None:
             self._rescore_beam = rescoring_func
 
+        super(BeamSearch, self).__init__(decoder, encoder_state, context, 
+                                         max_steps=max_steps,
+                                         context_mask=context_mask,
+                                         return_incomplete=return_incomplete)
+ 
+        # Create structures for storing completed beam items during search
+        self._completed_sequences = [list() for x in range(self.batch_size)]
+        self._completed_lengths = torch.LongTensor(
+            self.batch_size, beam_size).fill_(0)
+        self._completed_scores = encoder_state.new(self.batch_size, beam_size)\
+            .fill_(float("-inf"))
 
         self._index_offset = torch.arange(
-            0, self._batch_size, device=context.device).view(-1, 1)
-        self._index_offset.mul_(self._beam_size)
-        
-        self._context = self._initialize_context(context)
-        self._state = self._initialize_state(init_state)
-        
-        self._completed_sequences = [list() for x in range(batch_size)]
-        self._completed_lengths = torch.LongTensor(
-            batch_size, beam_size).fill_(0)
-        self._completed_log_probs = [list() for x in range(batch_size)]
-        self._completed_scores = [list() for x in range(batch_size)]
+            0, self.batch_size, device=encoder_state.device).view(-1, 1)
+        self._index_offset.mul_(self.beam_size)
+        self._beam_indices = torch.arange(self.beam_size)\
+                .repeat(self.batch_size).view(1,-1)
 
-        self._log_probs = context.data.new(batch_size, beam_size, 1).fill_(0)
-        self._inputs = self._decoder.start_inputs(total_beam_size)            
-        self._history = None
-        self._batch_complete = torch.ByteTensor(batch_size).fill_(0)
-        
+        self._is_sorted = False
+        self._sort_by_score = sort_by_score
+
     @property
-    def finished(self):
-        return self._finished
+    def beam_size(self):
+        return self._beam_size
 
-    def _initialize_state(self, init_state):
-        layers, batch_size, state_size = init_state.size()
-        beam_size = self._beam_size
-        return init_state.unsqueeze(2).repeat(1, 1, beam_size, 1).view(
-            layers, batch_size * beam_size, state_size)
+    @property
+    def is_sorted(self):
+        return self._is_sorted
 
-    def _initialize_context(self, context):
-        batch_size, ctx_len, ctx_size = context.size()
-        beam_size = self._beam_size
-        return context.unsqueeze(1).repeat(1, beam_size, 1, 1).view(
-            batch_size * beam_size, ctx_len, ctx_size)
+    @property
+    def sort_by_score(self):
+        return self._sort_by_score
 
-    def _rescore_beam(self, log_probs, history, next_tokens):
-        return log_probs / self._current_step
+    def _initialize_search_state(self, encoder_state):
+        
+        nl, bh_sz, state_dims = encoder_state.size()
+        bm_sz = self.beam_size
+        outputs = self.decoder.start_inputs(bh_sz * bm_sz).t()
+        
+        slp = encoder_state.new(bh_sz, bm_sz, 1).fill_(0.)
+        slp.data[:,1:].fill_(float("-inf"))
 
-    def _select_candidates(self, scores, candidates, log_probs, state):
+        init_enc_state = encoder_state.unsqueeze(2).repeat(1, 1, bm_sz, 1)\
+            .view(nl, bh_sz * bm_sz, state_dims)
 
-        next_scores, top_idxs = torch.topk(
+        return SearchState(outputs=outputs, 
+                           rnn_state=init_enc_state,
+                           sequence_log_probability=slp)
+
+    def _initialize_context(self, context, context_mask):
+        if context is None:
+            return None, None
+        bh_sz, ctx_len, ctx_dims = context.size()
+        bm_sz = self.beam_size
+        init_context = context.unsqueeze(1).repeat(1, bm_sz, 1, 1)\
+            .view(bh_sz * bm_sz, ctx_len, ctx_dims)
+        if context_mask is not None:
+            init_mask = context_mask.unsqueeze(1).repeat(1, bm_sz, 1, 1)\
+                .view(bh_sz * bm_sz, ctx_len, ctx_dims)
+        else:
+            init_mask = None
+        return init_context, init_mask
+
+    # TODO Make sure this interface is general enough for lm or 
+    # arbitrary model based rescoring ##, history, next_tokens):
+    def _rescore_beam(self, log_probs):
+        return log_probs / self.steps
+
+    def next_state(self, prev_state, active_batches):
+
+        next_state = self.decoder.next_state(
+            prev_state["rnn_state"], inputs=prev_state["outputs"].t(),
+            context=self.context, context_mask=self.context_mask,
+            compute_log_probability=True)
+
+        log_probs = next_state["log_probability"].view(
+            self.batch_size, self._beam_size, -1)
+        topk_lps, candidate_outputs = torch.topk(
+            log_probs, k=self._beam_size, dim=2)
+
+        candidate_log_probs = prev_state["sequence_log_probability"] + topk_lps
+        scores = self._rescore_beam(candidate_log_probs)
+
+        next_scores, top_score_idxs = torch.topk(
             scores.view(self._batch_size, -1), 
             k=self._beam_size,
             dim=1)
 
-        candidates = candidates.view(self._batch_size, self._beam_size ** 2)
-        log_probs = log_probs.view(self._batch_size, self._beam_size ** 2)
-        next_tokens = candidates.gather(1, top_idxs).view(-1, 1)
-        next_log_probs = log_probs.gather(1, top_idxs).unsqueeze(-1)
-        next_beam_indxs = top_idxs / self._beam_size + self._index_offset
+        output_log_probability = topk_lps.view(1, self.batch_size, -1).gather(
+            2, top_score_idxs.unsqueeze(0))
 
-        next_state = state[:,next_beam_indxs.view(-1)]
+        outputs = candidate_outputs\
+            .view(self.batch_size, self._beam_size ** 2)\
+            .gather(1, top_score_idxs).view(-1, 1)
+        next_state["outputs"] = outputs
+        next_log_probs = candidate_log_probs\
+            .view(self.batch_size, self._beam_size ** 2)\
+            .gather(1, top_score_idxs).view(self.batch_size, self.beam_size, 1)
+        next_state["sequence_log_probability"] = next_log_probs
 
-        if self._current_step == 1:
-            self._history = next_tokens
+        beam_selections = top_score_idxs / self.beam_size
+        next_rnn_indxs = (beam_selections + self._index_offset).view(-1)
+        if isinstance(next_state["rnn_state"], RNNState):
+            next_rnn_state = next_state["rnn_state"].reindex[:, next_rnn_indxs]
+            
         else:
+            next_rnn_state = next_state["rnn_state"][:, next_rnn_indxs]
 
-            self._history = torch.cat(
-                [self._history[next_beam_indxs.view(-1)], next_tokens], 1)
+        intermediate_state = next_state
+        next_state = SearchState(
+            outputs=outputs.t(),
+            output_log_probability=output_log_probability,
+            rnn_state=next_rnn_state, 
+            rnn_outputs=intermediate_state["rnn_outputs"],
+            logits=intermediate_state["logits"],
+            log_probability=intermediate_state["log_probability"],
+            sequence_log_probability=next_log_probs,
+            scores=next_scores.view(1, self.batch_size, self.beam_size))
 
-        return next_tokens, next_log_probs, next_state, next_scores.view(-1)
+        if "context_attention" in intermediate_state:
+            next_state["context_attention"] = intermediate_state["context_attention"]
 
-    def next_step(self):
-        self._current_step += 1
+        if self.steps == 1:
+            self._beam_history = self._beam_indices.view(
+                -1, self.batch_size, self.beam_size)
+        else:
+            next_history = self._beam_history\
+                .view(-1, self.batch_size * self.beam_size)[:,next_rnn_indxs]
+            self._beam_history = torch.cat(
+                [next_history, self._beam_indices], 0)
+            self._beam_history = self._beam_history.view(
+                    -1, self.batch_size, self.beam_size) 
+        return next_state
 
-        logits, attn, next_state = self._decoder(
-            self._inputs, self._context, self._state)
-        log_probs = torch.log_softmax(logits.squeeze(0), dim=1).view(
-            self._batch_size, self._beam_size, -1)
-        
-        topk_lps, topk_idxs = torch.topk(log_probs, k=self._beam_size, dim=2)
-        
-        next_log_probs = self._log_probs + topk_lps
-        scores = self._rescore_beam(next_log_probs, self._history, topk_idxs)
+    def check_termination(self, next_state, active_items):
 
-        if self._current_step == 1:
-            scores[:,1:].data.fill_(float("-inf"))
+        next_tokens = next_state["outputs"].view(self.batch_size,
+                                                 self.beam_size)
+        is_complete = next_tokens.eq(self.stop_index).cpu()
 
-        (next_inputs, next_log_probs, 
-         next_state, next_scores) = self._select_candidates(
-            scores, topk_idxs, next_log_probs, next_state)
+        for i, j in zip(*np.where(is_complete.data.numpy())):
 
-        is_complete = next_inputs.view(-1).eq(self._stop_index)
+            num_complete = len(self._completed_sequences[i])
+            if num_complete == self.beam_size:
+                continue
 
-        if torch.any(is_complete):
-            for i, i_is_complete in enumerate(is_complete):
-                if not i_is_complete:
-                    continue
-                
-                batch = i // self._beam_size
-                if len(self._completed_sequences[batch]) == self._beam_size:
-                    continue
+            self._completed_sequences[i].append(self._beam_history[:,i,j])
+            next_state["sequence_log_probability"][i,j].data.fill_(
+                float("-inf"))
+            self._completed_lengths[i, num_complete] = self.steps
+            score = next_state["scores"][0, i, j]
+            self._completed_scores[i, num_complete] = score
 
-                num_complete = len(self._completed_sequences[batch])
-                self._completed_sequences[batch].append(self._history[i])
-                self._completed_log_probs[batch].append(
-                    next_log_probs.view(-1)[i].clone())
-                next_log_probs.view(-1)[i].data.fill_(float("-inf"))
-                self._completed_lengths[batch, num_complete] = self._current_step
-                self._completed_scores[batch].append(next_scores[i])
-                if len(self._completed_sequences[batch]) == self._beam_size:
-                    self._batch_complete[batch] = 1
-
-        self._finished = torch.all(self._batch_complete)
-
-        self._inputs = next_inputs
-        self._log_probs = next_log_probs
-        self._state = next_state
-        self._scores = next_scores
+            if num_complete + 1 == self.beam_size:
+                active_items[i] = 0
+        return active_items
 
     def _add_incomplete_to_beam(self):
         history = self._history
@@ -173,66 +217,109 @@ class BeamSearch(object):
         self._completed_scores = torch.stack(scores)
         self._completed_sequences = sequences
 
-    def search(self, return_incomplete=False):
-       
-        # Perform beam search until either we find beam_size completed 
-        # sequences for each batch item or we reach the maximum number of 
-        # search steps.
-        while self._current_step < self._max_steps and not self.finished:
-            self.next_step()        
+    def get_result(self, field):
+        if not self.is_finished:
+            self.search()
+        if self.sort_by_score and not self.is_sorted:
+            self._sort_results()
+        return super(BeamSearch, self).get_result(field)
 
-        # If the beam search reached the maximum number of steps but the
-        # number of completed results is not equal to the beam size, add the 
-        # current best scoring sequences to fill out the beam.
-        if not self.finished and return_incomplete:
-            self._add_incomplete_to_beam()
+    def _sort_results(self):
 
-        # Finish the search by collecting final beam sequences, and other 
-        # stats. 
-        self._collect_beam()                        
-        self._finished = True
+        sorted_scores, indices = torch.sort(self._completed_scores, dim=1,
+                                            descending=True)
 
-    @property
-    def candidates(self):
-        if self.finished:
-            return self._completed_sequences
-        else:
-            return None
+        seq_len, bh_sz, bm_sz = self._completed_sequences.size()
+        
+        selector = indices.view(1, bh_sz, bm_sz).repeat(seq_len, 1, 1)
+        self._completed_sequences = self._completed_sequences.gather(
+            2, selector)
+        self._hidden_selectors = F.pad(
+            self._completed_sequences[:-1], (0, 0, 0, 0, 1, 0),
+            'constant', 0)
 
-    @property
-    def scores(self):
-        if self.finished:
-            return self._completed_scores
-        else:
-            return None
-
-    @property
-    def log_probs(self):
-        if self.finished:
-            return self._completed_log_probs
-        else:
-            return None
-
-    @property
-    def lengths(self):
-        if self.finished:
-            return self._completed_lengths
-        else:
-            return None
-
-    def sort_by_score(self):
-        if not self.finished:
-            raise Exception(
-                "BeamSearch must be finished before it can be sorted.")
-        self._completed_scores, indices = torch.sort(
-            self._completed_scores, 1, descending=True)
-
-        self._completed_log_probs = self._completed_log_probs.gather(
-            1, indices)
         self._completed_lengths = self._completed_lengths.gather(1, indices)
 
-        comp_seqs = self._completed_sequences.view(
-            self._batch_size * self._beam_size, -1)
-        st_comp_seqs = comp_seqs[(indices + self._index_offset).view(-1)]
-        self._completed_sequences = st_comp_seqs.view(
-            self._batch_size, self._beam_size, -1)
+        self._completed_scores = sorted_scores
+        self._is_sorted = True
+
+    def _collect_search_states(self, active_items):
+
+        max_len = self._completed_lengths.max().item()
+        max_beam = max([len(x) for x in self._completed_sequences])
+        seqs = self._completed_lengths.new(
+            self.batch_size, max_beam, max_len).fill_(-1)
+        for i, batch in enumerate(self._completed_sequences):
+            for j, cand in enumerate(batch):
+                seqs[i,j,:self._completed_lengths[i,j]].copy_(cand)
+        self._completed_sequences = seqs.permute(2, 0, 1)
+        self._hidden_selectors = F.pad(
+            self._completed_sequences[:-1], (0, 0, 0, 0, 1, 0),
+            'constant', 0)
+
+        search_states = self._state_history[0]
+        for state in self._state_history[1:]:
+            search_states.append(state)
+        self._state_history = search_states
+        self._state_history["active_items"] = self._completed_lengths.eq(0)
+
+    def _collect_outputs(self):
+        outputs = self._state_history["outputs"].view(
+            -1, self.batch_size, self.beam_size)
+        mask = self._completed_sequences.eq(-1)
+        selector = self._completed_sequences.masked_fill(mask, 0)
+        results = outputs.gather(2, selector)
+        results.data.masked_fill_(mask, self.pad_index)
+        return results
+
+    def _collect_output_lengths(self):
+        return self._completed_lengths
+
+    def _collect_logits(self):
+        return self._collect_field("logits")
+        selector = self._hidden_selectors
+        logits = self._state_history["logits"].view(
+            self.steps, self.batch_size, self.beam_size, -1)
+        vsize = logits.size(3)
+        mask = self._completed_sequences.eq(-1)
+        selector = selector.masked_fill(mask, 0)\
+            .view(self.steps, self.batch_size, self.beam_size, 1)\
+            .repeat(1, 1, 1, vsize)
+
+        logits = logits.gather(2, selector) 
+        logits.data.masked_fill_(mask.unsqueeze(-1), 0.)
+        return logits
+
+    def _collect_log_probability(self):
+        return self._collect_field("log_probability")
+    
+    def _collect_field(self, field):
+        selector = self._hidden_selectors
+        result = self._state_history[field].view(
+            self.steps, self.batch_size, self.beam_size, -1)
+        vsize = result.size(3)
+        mask = self._completed_sequences.eq(-1)
+        selector = selector.masked_fill(mask, 0)\
+            .view(self.steps, self.batch_size, self.beam_size, 1)\
+            .repeat(1, 1, 1, vsize)
+
+        result = result.gather(2, selector) 
+        result.data.masked_fill_(mask.unsqueeze(-1), 0.)
+        return result
+
+    def _collect_output_log_probability(self):
+        selector = self._completed_sequences
+        mask = self._completed_sequences.eq(-1)
+        olp = self._state_history["output_log_probability"]
+        result = olp.gather(2, selector.masked_fill(mask, 0))
+        result.data.masked_fill_(mask, 0.)
+        return result
+
+    def _collect_rnn_outputs(self):
+        return self._collect_field("rnn_outputs")
+
+    def _collect_context_attention(self):
+        return self._collect_field("context_attention")
+
+    def _collect_scores(self):
+        return self._completed_scores

@@ -19,43 +19,9 @@ class EncoderDecoderModel(nn.Module):
     def decoder(self):
         return self._decoder
 
-    def forward(self, inputs):
+    def xentropy(self, batch, reduction="mean", return_attention=False):
 
-        assert torch.all(
-            inputs["source_lengths"][:-1] >= inputs["source_lengths"][1:])
-
-        encoder_context, encoder_state = self._encoder(
-            inputs["source_features"], 
-            inputs["source_lengths"]) 
-
-        if inputs.get("multi_ref", False):
-            encoder_context = encoder_context[inputs["target_source_ids"]]
-            encoder_state = encoder_state[:,inputs["target_source_ids"]] 
-            mask = inputs.get("source_mask", None)
-            if mask is not None:
-                mask = mask[inputs["target_source_ids"]]
-        else:
-            mask = inputs.get("source_mask", None)
-
-        # TODO change decoder interface to put everything in a dict.
-        logits, attn, decoder_state = self._decoder(
-            inputs["target_input_features"], 
-            encoder_context, 
-            encoder_state, 
-            context_mask=mask)
-
-        state = {
-            "context_attention": attn["attention"],
-            "decoder_state": decoder_state,
-            "encoder_state": encoder_state,
-            "encoder_context": encoder_context
-        }
-
-        return logits, state
-
-    def xentropy(self, batch, reduction="mean", return_state=False):
-
-        logits, state = self.forward(batch)
+        logits, attn = self.forward(batch, return_attention=True)
         pad_index = self.decoder.embedding_context.vocab.pad_index
 
         elem_xent = F.cross_entropy(
@@ -75,10 +41,32 @@ class EncoderDecoderModel(nn.Module):
         else:
             raise Exception("reduction must be 'mean', 'sum', or 'none'.")
 
-        if return_state:
-            return result, state
+        if return_attention:
+            return result, attn
         else:
             return result
+
+    def forward(self, inputs, return_attention=False):
+        context, state = self._encoder(
+            inputs["source_features"], 
+            inputs["source_lengths"]) 
+
+        if inputs["multi_ref"]:
+            context = context[inputs["target_source_ids"]]
+            state = state[:,inputs["target_source_ids"]] 
+            mask = inputs.get("source_mask", None)
+            if mask is not None:
+                mask = mask[inputs["target_source_ids"]]
+        else:
+            mask = inputs.get("source_mask", None)
+
+        logits, attn, state = self._decoder(
+            inputs["target_input_features"], context, state, context_mask=mask)
+
+        if return_attention:
+            return logits, attn
+        else:
+            return logits
 
     def predict(self, inputs):
         context, state = self._encoder(
@@ -101,50 +89,6 @@ class EncoderDecoderModel(nn.Module):
         new_inputs = {"source_lengths": src_lengths, 
                       "source_features": src_features}
         return new_inputs, inv_order
-
-    def greedy_decode(self, inputs, sorted=False, return_tokens=True, 
-                      max_steps=100, copy_unknown=False):
-        if not sorted:
-            orig_inputs = inputs
-            inputs, inv_order = self._sort_inputs(inputs)
-            context, state = self._encoder(
-                inputs["source_features"], 
-                inputs["source_lengths"]) 
-            output, decoder_states = self._decoder.decode(
-                context, state, max_steps=max_steps)
-            output = output[inv_order]
-            for decoder_state in decoder_states:
-                if "attention" in decoder_state:
-                    decoder_state["attention"] = (
-                        decoder_state["attention"][:,inv_order])
-            inputs = orig_inputs
-        else:
-            context, state = self._encoder(
-                inputs["source_features"], 
-                inputs["source_lengths"]) 
-            output, decoder_states = self._decoder.decode(
-                context, state, max_steps=max_steps)
-
-        # TODO remove this and make a separate model_wrapper.
-        if return_tokens:
-             
-            tokens = self.decoder.embedding_context.convert_index_tensor(
-                output)
-            if copy_unknown and "attention" in decoder_states[0]:
-                unknown_tokens = output.eq(
-                    self.decoder.embedding_context.vocab.unknown_index)
-                src_vcb = self.encoder.embedding_context.named_vocabs["tokens"]
-                batches, steps = np.where(unknown_tokens.data.numpy())
-                for batch, step in zip(*np.where(unknown_tokens.data.numpy())):
-                    attention = decoder_states[step]["attention"][0, batch]
-                    src = torch.argmax(attention).item()
-                    tkn_idx = inputs["source_features"]["tokens"][batch, src]
-                    tkn = src_vcb[tkn_idx]
-                    tokens[batch][step] = tkn
-
-            return tokens
-        else:
-            return output
 
     def decode(self, inputs, sorted=False, return_tokens=True, max_steps=100):
         if not sorted:
