@@ -30,6 +30,15 @@ class EmbeddingContext(nn.Module):
                                       start=start, stop=stop)    
         return EmbeddingContext(vocab, embedding_size, **kwargs)
 
+    @staticmethod
+    def from_word_list(word_list, embedding_size=50, pad=None, unknown=None, 
+                       start=None, stop=None, **kwargs):
+        vocab = Vocab.from_word_list(word_list, pad=pad, unk=unknown,
+                                     start=start, stop=stop)    
+        return EmbeddingContext(vocab, embedding_size, **kwargs)
+
+
+
     def __init__(self, vocab, embedding_size, 
                  token_dropout=0.0, token_dropout_mode="zero",
                  embedding_dropout=0.0, initializer=None, 
