@@ -39,8 +39,13 @@ class Vocab(object):
         if pad is not None and pad not in word_list:
             word_list = [pad] + word_list
 
-        word2index = {w: i for i, w in enumerate(word_list)}
-        return Vocab(word_list, word2index, pad=pad, unk=unk, 
+        word2index = {}
+        index2word = []
+        for word in word_list:
+            if word not in word2index:
+                word2index[word] = len(word2index)
+                index2word.append(word)
+        return Vocab(index2word, word2index, pad=pad, unk=unk, 
                      start=start, stop=stop, counts=counts)
 
     def __getitem__(self, word_or_index):
