@@ -64,8 +64,8 @@ def test_precision_recall_fmeasure():
         assert recall[i] == result["recall"][label]
         assert f1[i] == result["f-measure"][label]
     
-    assert result["precision"]["macro avg."] == macro_avg_prec
-    assert result["recall"]["macro avg."] == macro_avg_recall
-    assert result["f-measure"]["macro avg."] == macro_avg_f1
+    assert torch.allclose(result["precision"]["macro avg."], macro_avg_prec)
+    assert torch.allclose(result["recall"]["macro avg."], macro_avg_recall)
+    assert torch.allclose(result["f-measure"]["macro avg."], macro_avg_f1)
 
 
