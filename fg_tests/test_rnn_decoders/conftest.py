@@ -86,7 +86,8 @@ def encoder_state(decoder_params, batch_size):
 
 @pytest.fixture(scope="module")
 def context(batch_size):
-    return nn.Parameter(torch.FloatTensor(batch_size, 5, 50).normal_())
+    return {"encoder_output": nn.Parameter(
+            torch.FloatTensor(batch_size, 5, 50).normal_())}
 
 @pytest.fixture(scope="module")
 def trainable_parameters(decoder_params):
@@ -97,7 +98,7 @@ def trainable_parameters(decoder_params):
         else:
             params.append(encoder_state)
         if decoder_params["attention"] != "none":
-            params.append(context)
+            params.append(context["encoder_output"])
         return params
     return parameters
 
@@ -111,7 +112,7 @@ def named_trainable_parameters(decoder_params):
         else:
             params.append(("encoder_state", encoder_state))
         if decoder_params["attention"] != "none":
-            params.append(("context", context))
+            params.append(("context", context["encoder_output"]))
         return params
     return parameters
 
@@ -125,10 +126,12 @@ def initialize_decoder(decoder_params, batch_size, beam_size):
             encoder_state = encoder_state.repeat(1, 1, beam_size).view(
                 1, batch_size * beam_size, -1)
             if context is not None:
-                ctx_steps = context.size(1)
-                context = context.repeat(1, beam_size, 1).view(
-                    batch_size * beam_size, ctx_steps, -1)
-            return encoder_state, context
+                ctx_steps = context["encoder_output"].size(1)
+                context = context["encoder_output"]\
+                    .repeat(1, beam_size, 1).view(
+                        batch_size * beam_size, ctx_steps, -1)
+                new_context = {"encoder_output": context}
+            return encoder_state, new_context
     return initializer
 
 @pytest.fixture(scope="module")
@@ -140,7 +143,6 @@ def decoder(decoder_params, vocab, train_data, encoder_state, context,
     dec = s2s.RNNDecoder(emb, hidden_dim=50, num_layers=1, 
                          rnn_cell=decoder_params["rnn_cell"],
                          attention=decoder_params["attention"])
-                         #copy_attention=decoder_params["copy_attention"])
     dec.initialize_parameters()
     dec.train()
     #optim = getattr(torch.optim, optim)(param_iter_func(), lr=lr)
@@ -150,13 +152,10 @@ def decoder(decoder_params, vocab, train_data, encoder_state, context,
     for step in range(max_steps):
         optim.zero_grad()
         istate, ictx = initialize_decoder(encoder_state, context)
-        state = dec.next_state(
-            istate, context=ictx, 
-            inputs=train_data["target_input_features"])
- #           target_context_features=train_data["target_context_features"])
+        state = dec(istate, train_data["target_input_features"], ictx)
 
         total_xent = F.cross_entropy(
-            state["logits"].permute(0, 2, 1), 
+            state["target_logits"].permute(0, 2, 1), 
             train_data["target_output_features"]["tokens"].t(),
             ignore_index=dec.embedding_context.vocab.pad_index,
             reduction="sum")
@@ -207,49 +206,6 @@ def make_dataset(tgt_vcb, tgt_texts, src_texts=None):
     }
 
     return batch
-
-#?    if src_texts:
-#?        
-#?        src_vcb = make_vocab(src_texts)
-#?
-#?        print()
-#?        src_feats = []
-#?        for i, ctx in enumerate(src_texts):
-#?            print(ctx)
-#?            src_feats.append(
-#?                torch.LongTensor([src_vcb[t] for t in ctx.split()]))
-#?        src_feats = batch_pad_and_stack_vector(src_feats, tgt_vcb.pad_index)
-#?
-#?        print(src_feats)
-#?        print()
-#?        context_vocab_map = torch.FloatTensor(src_feats.size(0),
-#?                                              src_feats.size(1),
-#?                                              len(src_vcb)).zero_()
-#?        for b in range(src_feats.size(0)):
-#?            print(b)
-#?            for i in range(src_feats.size(1)):
-#?                context_vocab_map[b,i,src_feats[b,i]] = 1.
-#?
-#?        print(context_vocab_map)
-#?        alignments = torch.LongTensor(tgt_out.size()).zero_()
-#?
-#?        for i, row in enumerate(tgt_texts):
-#?            for j, tok in enumerate(row.split()):
-#?
-#?
-#?            for i, ctx in range(tgt_out.size(1)):
-#?                print(tgt_out[b, i])
-#?
-#?
-#?        input()
-#?        
-#?
-#?        ptr_switch = src_feats.ne(tgt_vcb.unknown_index) \
-#?                & src_feats.ne(tgt_vcb.pad_index) 
-#?        batch["target_context_features"] = {"tokens": src_feats}
-#?        batch["pointer_switch"] = ptr_switch
-#?
-#?    return batch
 
 @pytest.fixture(scope="package")
 def tensor_equal():

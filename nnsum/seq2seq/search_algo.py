@@ -71,8 +71,8 @@ class DecoderSearch(object):
         return context, context_mask
 
     def _initialize_search_state(self, encoder_state):
-        outputs = self.decoder.start_inputs(self.batch_size).t()
-        return SearchState(rnn_state=encoder_state, outputs=outputs)
+        output = self.decoder.start_inputs(self.batch_size).t()
+        return SearchState(rnn_state=encoder_state, output=output)
 
     def search(self):
        
@@ -118,12 +118,35 @@ class DecoderSearch(object):
 
         result = self._results_cache.get(field, None)
         if result is None:
-            result = getattr(self, "_collect_{}".format(field))()
+            getter = getattr(self,  "_collect_{}".format(field), None)
+            if getter is None:
+                def adhoc_getter():
+                    return self._collect_adhoc_field(field)
+                getter = adhoc_getter
+            result = getter()
             self._results_cache[field] = result
         return result
  
-    def _collect_outputs(self):
-        outputs = self._state_history["outputs"]
+    def _collect_adhoc_field(self, field):
+        result = self._state_history[field]
+
+        # (Optionally) Mask incomplete sequences with 0.
+        # Skip this by default.
+        if not self.return_incomplete:
+            active_mask = self._state_history["active_items"].view(1, -1)
+            while active_mask.dim() < result.dim():
+                active_mask = active_mask.unsqueeze(-1)
+            result.data.masked_fill_(active_mask, 0)
+
+        # Mask output of pad tokens, i.e. this sequence has finished and the
+        # output is meaningless.
+        mask = self.get_result("output").eq(self.pad_index)
+        while mask.dim() < result.dim():
+            mask = mask.unsqueeze(-1)
+        return result.data.masked_fill_(mask, 0.)
+
+    def _collect_output(self):
+        outputs = self._state_history["output"]
 
         # (Optionally) Mask incomplete sequences with pad index. 
         # Skip this by default.
@@ -132,9 +155,9 @@ class DecoderSearch(object):
             outputs.data.masked_fill_(mask, self.pad_index)
         return outputs
 
-    def _collect_logits(self):
+    def _collect_target_logits(self):
 
-        logits = self._state_history["logits"]
+        logits = self._state_history["target_logits"]
 
         # (Optionally) Mask incomplete sequences with 0. Skip this by default.
         if not self.return_incomplete:
@@ -142,7 +165,7 @@ class DecoderSearch(object):
             logits.data.masked_fill_(mask, 0.)
 
         # Set logits to uniformly 0 for pad tokens.
-        mask = self.get_result("outputs").eq(self.pad_index).unsqueeze(-1)
+        mask = self.get_result("output").eq(self.pad_index).unsqueeze(-1)
         logits.data.masked_fill_(mask, 0.)
 
         return logits
@@ -156,7 +179,7 @@ class DecoderSearch(object):
             result.data.masked_fill_(mask, 0.)
 
         # Set logits to uniformly 0 for pad tokens.
-        mask = self.get_result("outputs").eq(self.pad_index).unsqueeze(-1)
+        mask = self.get_result("output").eq(self.pad_index).unsqueeze(-1)
         result.data.masked_fill_(mask, 0.)
 
         return result
@@ -171,13 +194,13 @@ class DecoderSearch(object):
             ctx_attn.data.masked_fill_(mask, 0.)
 
         # Set attention to uniformly 0 for pad tokens.
-        mask = self.get_result("outputs").eq(self.pad_index).unsqueeze(-1)
+        mask = self.get_result("output").eq(self.pad_index).unsqueeze(-1)
         ctx_attn.data.masked_fill_(mask, 0.)
         return ctx_attn
 
-    def _collect_rnn_outputs(self):
+    def _collect_rnn_output(self):
 
-        result = self._state_history["rnn_outputs"]
+        result = self._state_history["rnn_output"]
 
         # (Optionally) Mask incomplete sequences with 0. Skip this by default.
         if not self.return_incomplete:
@@ -185,12 +208,12 @@ class DecoderSearch(object):
             result.data.masked_fill_(mask, 0.)
 
         # Set attention to uniformly 0 for pad tokens.
-        mask = self.get_result("outputs").eq(self.pad_index).unsqueeze(-1)
+        mask = self.get_result("output").eq(self.pad_index).unsqueeze(-1)
         result.data.masked_fill_(mask, 0.)
         return result
 
     def _collect_output_log_probability(self):
-        outputs = self.get_result("outputs").unsqueeze(-1)
+        outputs = self.get_result("output").unsqueeze(-1)
         mask = outputs.eq(self.pad_index)
         log_probs = self._state_history["log_probability"]
         result = log_probs.gather(2, outputs)

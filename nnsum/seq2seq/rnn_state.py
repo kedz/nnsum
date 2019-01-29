@@ -1,6 +1,7 @@
 import torch
 
 
+#TODO rename to EncoderState
 class RNNState(object):
 
     class StateIndexer(object):

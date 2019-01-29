@@ -1,17 +1,14 @@
 import torch
 import torch.nn as nn
 
+import nnsum.attention
 from .rnn_state import RNNState
 from .search_state import SearchState
-from .no_attention import NoAttention
-from .dot_attention import DotAttention
 
 
 class RNNDecoder(nn.Module):
-    def __init__(self, embedding_context, 
-                 hidden_dim=512, num_layers=1,
-                 rnn_cell="GRU", attention="none",
-                 copy_attention="none"):
+    def __init__(self, embedding_context, hidden_dim=512, num_layers=1,
+                 rnn_cell="GRU", attention="none"):
         super(RNNDecoder, self).__init__()
 
         rnn_cell = rnn_cell.upper()
@@ -25,65 +22,77 @@ class RNNDecoder(nn.Module):
             embedding_context.output_size, hidden_dim, num_layers=num_layers)
 
         pred_dim = hidden_dim if attention == "none" else 2 * hidden_dim
-        self._predictor = nn.Linear(pred_dim, len(self._emb_ctx.vocab))
+        self._predictor = nn.Sequential(
+            nn.Linear(pred_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, len(self._emb_ctx.vocab)))
       
         if attention == "none":
-            self._attention = NoAttention()
+            self._context_attention = None
         else:
-            self._attention = DotAttention()
-       
-#        if copy_attention == "reuse":
-#            self._copy_attention_mode = "reuse"
-#        elif copy_attention == "dot":
-#            self._copy_attention_mode = "dot"
-#            self._pre_copy_attention = nn.Sequential(
-#                    nn.Linear(pred_dim, hidden_dim), nn.Tanh())
-#            self._copy_attention = DotAttention()
-#            self._pointer_switch = nn.Sequential(
-#                nn.Linear(pred_dim, 1), nn.Sigmoid())
-#        else:
-#        self._copy_attention_mode = "none"
+            self._context_attention = nnsum.attention.DotAttention(
+                hidden_dim, hidden_dim)
 
-    def next_state(self, prev_rnn_state, inputs=None, context=None, 
-                   context_mask=None, compute_log_probability=False,
-                   context_vocab_map=None):
+    def forward(self, prev_rnn_state, inputs, context):
 
         rnn_input = self.embedding_context(inputs)
-
         rnn_output, rnn_state = self.rnn(rnn_input, prev_rnn_state)
+
+        context_attention, weighted_context = self._compute_attention(
+            context.get("encoder_output", None), 
+            context.get("source_mask", None),
+            rnn_output)
         
-        predictor_input, context_attention = self.attention(
-            context, rnn_output, mask=context_mask)
-        
-        logits = self._predictor(predictor_input)
+        target_logits = self._compute_logits(rnn_output, weighted_context)
 
-        next_state = SearchState(
-            logits=logits, rnn_state=RNNState.new_state(rnn_state),
-            rnn_outputs=rnn_output)
+        return SearchState(rnn_input=rnn_input, rnn_output=rnn_output,
+                           rnn_state=RNNState.new_state(rnn_state),
+                           context_attention=context_attention,
+                           weighted_context=weighted_context,
+                           target_logits=target_logits)
 
-        if context_attention is not None:
-            next_state["context_attention"] = context_attention
+    def next_state(self, prev_state, context, compute_log_probability=False,
+                   compute_output=False, compute_top_k=-1):
 
-#        if self.copy_attention_mode == "dot":
-#            print(target_context_features["tokens"])
-#            copy_prob = self._pointer_switch(predictor_input).squeeze(-1)
-#            query = self._pre_copy_attention(predictor_input)
-#             # TODO avoid doing the composition op.
-#            _, copy_attention = self._copy_attention(
-#               context, query, mask=context_mask)
-#            gen_prob = (1 - copy_prob)
-#            gen_vocab_prob = torch.softmax(logits, dim=2)
-#            print()
-#            print(copy_attention)
-#            print(copy_prob)
-#            print(gen_prob)
-#            print(gen_vocab_prob)
-#            input()
+        next_state = self.forward(
+            prev_state["rnn_state"], 
+            prev_state["output"].t(),
+            context)
 
         if compute_log_probability:
-            next_state["log_probability"] = torch.log_softmax(logits, dim=2)
+            next_state["log_probability"] = torch.log_softmax(
+                next_state["target_logits"], dim=2)
+
+        if compute_output:
+            if compute_top_k > 0:
+                #do top k
+                if compute_log_probability:
+                    #get_log_prob
+                    pass
+            else:
+                if compute_log_probability:
+                    output_lp, output = next_state["log_probability"].max(2)
+                    next_state["output"] = output
+                    next_state["output_log_probability"] = output_lp
+                else:
+                    _, output = next_state["target_logits"].max(2)
+                    next_state["output"] = output
 
         return next_state
+
+    def _compute_attention(self, context, context_mask, query):
+        if self._context_attention:
+            return self._context_attention(context, query, 
+                                           context_mask=context_mask)
+        else:
+            return None, None
+
+    def _compute_logits(self, rnn_output, attended_context):
+        if attended_context is not None:
+            predictor_input = torch.cat([rnn_output, attended_context], 2)
+        else:
+            predictor_input = rnn_output
+        return self._predictor(predictor_input)
 
     @property
     def rnn(self):
@@ -94,96 +103,8 @@ class RNNDecoder(nn.Module):
         return self._emb_ctx
 
     @property
-    def attention(self):
-        return self._attention
-
-    @property
     def predictor(self):
         return self._predictor
-
-    @property
-    def copy_attention_mode(self):
-        return self._copy_attention_mode
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    def log_likelihood(self, inputs, outputs, context, encoder_state,
-                       context_mask=None):
-        rnn_input = self.embedding_context(inputs)
-        rnn_output, rnn_state = self.rnn(rnn_input, encoder_state)
-        predictor_input, attention = self.attention(context, rnn_output,
-                                                    mask=context_mask)
-        logits = self.predictor(predictor_input)
-
-    def forward(self, inputs, context, state, context_mask=None):
-        decoder_output, state = self._rnn(self._emb_ctx(inputs), state)
-        predictor_input, attn = self._attention(context, decoder_output,
-                                                mask=context_mask)
-        attn_dict = {"attention": attn}
-        if self.copy_attention_mode == "reuse":
-            attn_dict["copy_attention"] = attn
-
-        logits = self._predictor(predictor_input)
-        return logits, attn_dict, state
-
-    def decode(self, context, state, max_steps=1000, return_log_probs=False,
-               return_attention=False):
-        batch_size = context.size(0)
-        
-        start_idx = self.embedding_context.vocab.start_index
-        stop_idx = self.embedding_context.vocab.stop_index
-        pad_idx = self.embedding_context.vocab.pad_index
-
-        inputs = context.data.new(
-            batch_size).long().fill_(start_idx).view(-1, 1)
-
-        predicted_tokens = []
-        token_log_probs = []
-        # TODO Make general empty state
-        attention_steps = []    
-    
-        active_items = inputs.ne(stop_idx).view(-1)
-        for step in range(max_steps):
-            logits, attn, state = self.forward(inputs, context, state)
-            attention_steps.append(attn)
-            a, next_tokens = logits.max(2)
-            
-            if return_log_probs:
-                lp_step = logits.gather(2, next_tokens.view(1, -1, 1)) \
-                    - torch.logsumexp(logits, dim=2, keepdim=True)
-                lp_step.data.view(-1).masked_fill_(~active_items, 0)
-                token_log_probs.append(lp_step)  
-            
-            inputs = next_tokens.t()
-            inputs.view(-1).data.masked_fill_(~active_items, pad_idx)
-            predicted_tokens.append(inputs)
-            active_items = active_items * inputs.view(-1).ne(stop_idx)
-            if torch.all(~active_items):
-                break
-        predicted_tokens = torch.cat(predicted_tokens, dim=1)
-
-        if return_log_probs:
-            
-            return predicted_tokens, attention_steps, torch.cat(
-                token_log_probs, 0)
-        else:
-            return predicted_tokens, attention_steps
 
     def start_inputs(self, batch_size):
         return torch.LongTensor(
@@ -193,11 +114,17 @@ class RNNDecoder(nn.Module):
         return inputs 
 
     def initialize_parameters(self):
-        print(" Initializing decoder embedding context parameters.")
+        #print(" Initializing decoder embedding context parameters.")
         self.embedding_context.initialize_parameters()
-        print(" Initializing decoder parameters.")
+        #print(" Initializing decoder parameters.")
         for name, param in self.rnn.named_parameters():
             if "weight" in name:
                 nn.init.xavier_normal_(param)
             else:
                 nn.init.constant_(param, 1.)
+        for name, param in self._predictor.named_parameters():
+            if "weight" in name:
+                nn.init.xavier_normal_(param)
+            else:
+                nn.init.constant_(param, 1.)
+

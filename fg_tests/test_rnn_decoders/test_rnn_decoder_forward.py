@@ -1,6 +1,7 @@
 import pytest
 import torch
 from nnsum.util import batch_pad_and_stack_matrix
+from nnsum.seq2seq import SearchState
 
 
 def data_param_gen():
@@ -16,15 +17,14 @@ def data_params(request):
 
 def decoder_param_gen():
     return [
-        {"attention": "none", "rnn_cell": "gru", "copy_attention": "none"},
-        {"attention": "none", "rnn_cell": "lstm", "copy_attention": "none"}, 
-        {"attention": "dot", "rnn_cell": "gru", "copy_attention": "none"},
-        {"attention": "dot", "rnn_cell": "lstm", "copy_attention": "none"},
+        {"attention": "none", "rnn_cell": "gru"},
+        {"attention": "none", "rnn_cell": "lstm"}, 
+        {"attention": "dot", "rnn_cell": "gru"},
+        {"attention": "dot", "rnn_cell": "lstm"},
     ]
 
 def decoder_param_names(params):
-    return ("attn={attention}:cpy_attn={copy_attention}"
-            ":rcell={rnn_cell}").format(**params)
+    return ("attn={attention}:rcell={rnn_cell}").format(**params)
 
 @pytest.fixture(scope="module", params=decoder_param_gen(), 
                 ids=decoder_param_names)
@@ -41,11 +41,11 @@ def output_mask(gold_outputs, vocab):
 
 @pytest.fixture(scope="module")
 def batch_state(decoder, eval_data, encoder_state, context):
-    return decoder.next_state(
-        encoder_state, 
-        inputs=eval_data["target_input_features"],
-        context=context,
-        compute_log_probability=True)
+    input_state = SearchState(
+        output=eval_data["target_input_features"]["tokens"].t(),
+        rnn_state=encoder_state)
+    return decoder.next_state(input_state, context,
+                              compute_log_probability=True)
 
 @pytest.fixture(scope="module")
 def singleton_eval_data(eval_data, batch_size):
@@ -72,12 +72,10 @@ def singleton_states(decoder_params, decoder, singleton_eval_data,
         else:
             encoder_state_i = encoder_state[:,i:i+1]
         inputs_i = singleton_eval_data[i]["target_input_features"]
-        context_i = context[i:i+1]
-        state = decoder.next_state(
-            encoder_state_i, 
-            inputs=inputs_i,
-            context=context_i,
-            compute_log_probability=True)
+        context_i = {"encoder_output": context["encoder_output"][i:i+1]}
+        input_state_i = SearchState(output=inputs_i["tokens"].t(), rnn_state=encoder_state_i)
+        state = decoder.next_state(input_state_i, context_i, 
+                                   compute_log_probability=True)
         states.append(state)
     return states
 
@@ -92,17 +90,17 @@ def batch_predictions(batch_log_probability):
 
 @pytest.fixture(scope="module")
 def batch_rnn_outputs(batch_state, output_mask):
-    output = batch_state["rnn_outputs"]
+    output = batch_state["rnn_output"]
     return output.masked_fill(output_mask.t().unsqueeze(-1), 0.)
 
 @pytest.fixture(scope="module")
 def batch_logits(batch_state, output_mask):
-    output = batch_state["logits"]
+    output = batch_state["target_logits"]
     return output.masked_fill(output_mask.t().unsqueeze(-1), 0.)
 
 @pytest.fixture(scope="module")
 def batch_context_attention(batch_state, output_mask):
-    if "context_attention" not in batch_state:
+    if batch_state["context_attention"] is None:
         return None
     else:
         output = batch_state["context_attention"]
@@ -126,7 +124,7 @@ def singleton_log_probability(singleton_states, output_mask):
 def singleton_logits(singleton_states, output_mask):
     logits = []
     for state in singleton_states:
-        logits.append(state["logits"].squeeze(1))
+        logits.append(state["target_logits"].squeeze(1))
     logits = batch_pad_and_stack_matrix(logits, 0).permute(1, 0, 2)
     return logits
 
@@ -138,12 +136,12 @@ def singleton_predictions(singleton_log_probability):
 def singleton_rnn_outputs(singleton_states):
     outputs = []
     for state in singleton_states:
-        outputs.append(state["rnn_outputs"].squeeze(1))
+        outputs.append(state["rnn_output"].squeeze(1))
     return batch_pad_and_stack_matrix(outputs, 0.).permute(1, 0, 2)
 
 @pytest.fixture(scope="module")
 def singleton_context_attention(singleton_states):
-    if "context_attention" not in singleton_states[0]:
+    if singleton_states[0]["context_attention"] is None:
         return None
     else:
         outputs = []

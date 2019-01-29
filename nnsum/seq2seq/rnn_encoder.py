@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
@@ -25,6 +26,10 @@ class RNNEncoder(nn.Module):
         return self._emb_ctx
 
     def forward(self, features, lengths):
+
+        if not torch.all(lengths[:-1] >= lengths[1:]):
+            raise ValueError("Inputs must be sorted by decreasing length.")
+
         emb = self._emb_ctx(features)        
         emb_packed = pack_padded_sequence(emb, lengths)
         context_packed, state = self._rnn(emb_packed)
@@ -32,9 +37,9 @@ class RNNEncoder(nn.Module):
         return context, state
 
     def initialize_parameters(self):
-        print(" Initializing encoder embedding context parameters.")
+#        print(" Initializing encoder embedding context parameters.")
         self.embedding_context.initialize_parameters()
-        print(" Initializing encoder parameters.")
+#        print(" Initializing encoder parameters.")
         for name, param in self.rnn.named_parameters():
             if "weight" in name:
                 nn.init.xavier_normal_(param)

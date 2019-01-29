@@ -34,10 +34,13 @@ class SearchState(object):
         for key in self._state:
             old_val = self._state[key]
             new_val = other_state._state[key]
+
             old_val_is_list = isinstance(old_val, list)
             new_val_is_list = isinstance(new_val, list)
 
-            if old_val_is_list and not new_val_is_list:
+            if old_val is None and new_val is None:
+                self._state[key] = None
+            elif old_val_is_list and not new_val_is_list:
                 assert old_val[0].dim() == new_val.dim()
                 old_val.append(new_val)
             elif not old_val_is_list and not new_val_is_list:
@@ -46,9 +49,11 @@ class SearchState(object):
             elif old_val_is_list and new_val_is_list:
                 assert old_val[0].dim() == new_val[0].dim()
                 old_val.extend(new_val)
-            else:
+            elif not old_val_is_list and new_val_is_list:
                 assert old_val.dim() == new_val[0].dim()
                 self._state[key] = [old_val] + new_val
+            else:
+                raise Exception()
         return self
 
 
