@@ -13,4 +13,5 @@ from . import embedding_context
 from . import seq2seq
 from . import seq2clf
 from . import fg_cli
+from . import attention
 
