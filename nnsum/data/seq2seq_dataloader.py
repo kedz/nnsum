@@ -1,8 +1,12 @@
 import torch
 from torch.utils.data import DataLoader
-from nnsum.util import batch_pad_and_stack_vector
+
+import numpy as np
 import ujson as json
+
+from nnsum.util import batch_pad_and_stack_vector
 from .aligned_dataset import AlignedDataset
+from .seq2seq_batcher import batch_source, batch_target, batch_copy_alignments
 
 
 class Seq2SeqDataLoader(DataLoader):
@@ -10,26 +14,93 @@ class Seq2SeqDataLoader(DataLoader):
                  batch_size=1, shuffle=False, sampler=None, 
                  batch_sampler=None, num_workers=0, pin_memory=False, 
                  drop_last=False, timeout=0, worker_init_fn=None,
-                 include_original_data=False, sorted=True,
+                 include_original_data=False, sort=True,
                  has_copy_attention=False):
 
-        if isinstance(dataset, AlignedDataset):
-            collate_fn = self._aligned_collate_fn 
-        else:
-            collate_fn = self._source_collate_fn
+#        if isinstance(dataset, AlignedDataset):
+        collate_fn = self._aligned_collate_fn 
+        #else:
+        #    collate_fn = self._source_collate_fn
         self.include_original_data = include_original_data
         self.has_copy_attention = has_copy_attention
+        self._source_vocabs = source_vocabs
+        self._target_vocabs = target_vocabs
+        self._is_sorted = sorted
 
         super(Seq2SeqDataLoader, self).__init__(
             dataset, batch_size=batch_size, shuffle=shuffle, sampler=sampler,
             batch_sampler=batch_sampler, num_workers=num_workers,
             pin_memory=pin_memory, drop_last=drop_last, timeout=timeout, 
             worker_init_fn=worker_init_fn, collate_fn=collate_fn)
-        self._source_vocabs = source_vocabs
-        self._target_vocabs = target_vocabs
-        self._sorted = sorted
+    
+    @property
+    def is_sorted(self):
+        return self._is_sorted
+
+    @property
+    def source_vocabs(self):
+        return self._source_vocabs
+
+    @property
+    def target_vocabs(self):
+        return self._target_vocabs
+
+    def _sort_batch(self, batch):
+        indices = np.argsort([-len(item["source"]["tokens"]) 
+                              for item in batch])
+        return [batch[i] for i in indices]
+         
+    def _aligned_collate_fn(self, batch):
+
+        if self.is_sorted:
+            batch = self._sort_batch(batch)
+
+        source_items = [item["source"] for item in batch]
+        data = batch_source(source_items, self.source_vocabs)
+
+        if "target" in batch[0]:
+            target_items = [item["target"] for item in batch]
+            data.update(batch_target(target_items, self.target_vocabs))
+
+        return data
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        if "references" not in batch[0][1]:
+            return self._aligned_collate_fn_single_ref(batch)
+        else:
+            return self._aligned_collate_fn_multi_ref(batch)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def _source_collate_fn(self, batch):
+
+        
+
         if self._sorted:
             batch.sort(key=lambda x: len(x["tokens"]["tokens"]), reverse=True)
 
@@ -56,12 +127,6 @@ class Seq2SeqDataLoader(DataLoader):
         batch_data["source_mask"] = src_feature_sequences.eq(vocab.pad_index)
 
         return batch_data
-
-    def _aligned_collate_fn(self, batch):
-        if "references" not in batch[0][1]:
-            return self._aligned_collate_fn_single_ref(batch)
-        else:
-            return self._aligned_collate_fn_multi_ref(batch)
 
     def _aligned_collate_fn_multi_ref(self, batch):
 
