@@ -31,7 +31,7 @@ class RNNDecoder(nn.Module):
             self._context_attention = None
         else:
             self._context_attention = nnsum.attention.DotAttention(
-                hidden_dim, hidden_dim)
+                hidden_dim, hidden_dim, temp=1.)
 
     def forward(self, prev_rnn_state, inputs, context):
 
