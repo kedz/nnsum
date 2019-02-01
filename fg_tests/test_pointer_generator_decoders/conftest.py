@@ -70,7 +70,7 @@ def train_data(source_texts, target_texts, source_vocab, target_vocab,
 
 @pytest.fixture(scope="module")
 def model(decoder_params, source_vocab, target_vocab, train_data):
-    max_steps = 50
+    max_steps = 150
  
     class TestModel(nn.Module):
         def __init__(self):
@@ -78,13 +78,13 @@ def model(decoder_params, source_vocab, target_vocab, train_data):
             src_emb = ec.EmbeddingContext(
                 source_vocab, embedding_size=100, name="tokens")
             self.encoder = s2s.RNNEncoder(
-                src_emb, hidden_dim=50, num_layers=1, 
+                src_emb, hidden_dim=100, num_layers=1, 
                 rnn_cell=decoder_params["rnn_cell"])
 
             tgt_emb = ec.EmbeddingContext(
-                target_vocab, embedding_size=50, name="tokens")
+                target_vocab, embedding_size=100, name="tokens")
             self.decoder = s2s.PointerGeneratorDecoder(
-                tgt_emb, hidden_dim=50, num_layers=1, 
+                tgt_emb, hidden_dim=100, num_layers=1, 
                 rnn_cell=decoder_params["rnn_cell"],
                 attention=decoder_params["attention"])
    
@@ -128,30 +128,20 @@ def model(decoder_params, source_vocab, target_vocab, train_data):
     no_gen_mask = gen_targets != ptr_targets
     mask = ptr_targets.eq(model.decoder.embedding_context.vocab.pad_index)
 
-    optim = torch.optim.Adam(model.parameters(), lr=.095)
+    optim = torch.optim.SGD(model.parameters(), lr=0.25)
+    loss_func = s2s.PointerGeneratorCrossEntropyLoss(
+        pad_index=model.decoder.embedding_context.vocab.pad_index)
     losses = []
+    
     for step in range(max_steps):
         optim.zero_grad()
                 
         state = model(train_data)
-        
-        #log_probs = state["log_probability"].gather(2, ptr_targets)
-        #log_probs.data.masked_fill_(mask, 0.)
-
-        ptr_probs = state["pointer_probability"].gather(2, ptr_targets)
-        gen_probs = state["generator_probability"].gather(2, gen_targets)
-        gen_probs = gen_probs.masked_fill(no_gen_mask, 0)
-        
-        output_probs = ptr_probs + gen_probs
-        log_probs = torch.log(output_probs)
-        log_probs.data.masked_fill_(mask, 0.)
-        total_xent = -log_probs.sum()
-        total_tokens = train_data["target_lengths"].sum().float()
-        avg_xent = total_xent / total_tokens
+        avg_xent = loss_func(state, train_data)
         avg_xent.backward()
         optim.step()
-        #print(avg_xent.item(), torch.exp(avg_xent).item())
         losses.append(avg_xent.item())
+
     print("Optimized for {} steps. t0={:5.3f} down to t{}={:5.3f}.".format(
             max_steps, losses[0], max_steps, losses[-1]))
     model.eval()
@@ -165,5 +155,3 @@ def tensor_equal():
         else:
             return torch.allclose(a, b, atol=atol)
     return tensor_equal_func
-
-

@@ -145,22 +145,16 @@ def decoder(decoder_params, vocab, train_data, encoder_state, context,
                          attention=decoder_params["attention"])
     dec.initialize_parameters()
     dec.train()
-    #optim = getattr(torch.optim, optim)(param_iter_func(), lr=lr)
     optim = torch.optim.SGD(
         trainable_parameters(dec, encoder_state, context), lr=.75)
     losses = []
+    loss_func = s2s.CrossEntropyLoss(
+        pad_index=dec.embedding_context.vocab.pad_index)
     for step in range(max_steps):
         optim.zero_grad()
         istate, ictx = initialize_decoder(encoder_state, context)
         state = dec(istate, train_data["target_input_features"], ictx)
-
-        total_xent = F.cross_entropy(
-            state["target_logits"].permute(0, 2, 1), 
-            train_data["target_output_features"]["tokens"].t(),
-            ignore_index=dec.embedding_context.vocab.pad_index,
-            reduction="sum")
-        total_tokens = train_data["target_lengths"].sum().float()
-        avg_xent = total_xent / total_tokens
+        avg_xent = loss_func(state, train_data)
         avg_xent.backward()
         optim.step()
         losses.append(avg_xent.item())
