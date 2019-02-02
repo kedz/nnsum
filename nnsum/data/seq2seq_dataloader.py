@@ -6,11 +6,11 @@ import ujson as json
 
 from nnsum.util import batch_pad_and_stack_vector
 from .aligned_dataset import AlignedDataset
-from .seq2seq_batcher import batch_source, batch_target, batch_copy_alignments
+from .seq2seq_batcher import batch_source, batch_target, batch_pointer_data
 
 
 class Seq2SeqDataLoader(DataLoader):
-    def __init__(self, dataset, source_vocabs, target_vocabs,
+    def __init__(self, dataset, source_vocabs, target_vocabs=None,
                  batch_size=1, shuffle=False, sampler=None, 
                  batch_sampler=None, num_workers=0, pin_memory=False, 
                  drop_last=False, timeout=0, worker_init_fn=None,
@@ -61,6 +61,11 @@ class Seq2SeqDataLoader(DataLoader):
         if "target" in batch[0]:
             target_items = [item["target"] for item in batch]
             data.update(batch_target(target_items, self.target_vocabs))
+            data.update(batch_pointer_data(source_items, self.target_vocabs,
+                                           targets=target_items))
+        
+        else:
+            data.update(batch_pointer_data(source_items, self.target_vocabs))
 
         return data
 

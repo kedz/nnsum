@@ -2,6 +2,8 @@ import torch
 from nnsum.embedding_context import Vocab
 from nnsum.util import batch_pad_and_stack_vector
 
+from collections import OrderedDict
+
 
 def batch_source(source_texts, source_vocab):
     
@@ -168,53 +170,6 @@ def _batch_cpy_align_from_list_of_list_of_strs(srcs, tgts, vcb, aligns,
     return {"copy_probability": copy_probs,
             "copy_targets": copy_targets,
             "source_vocab_map": vocab_map}
-
-def _create_dense_vocab_map(srcs, src_vocab, tgt_vocab):
-
-    # Size of extended vocabulary is the target vocab size + the number of 
-    # unique words in the source not already covered in the target vocab.
-    extended_vsize = len(tgt_vocab) + len(src_vocab)
-
-    batch_size = len(srcs)
-    steps = 1 + max([len(src) for src in srcs])
-
-    source_vocab_map = torch.FloatTensor(
-        batch_size, steps, extended_vsize).zero_()
-    for i, src in enumerate(srcs):
-        for j, tok in enumerate(src, 1):
-            if tok in src_vocab:
-                ext_vcb_idx = src_vocab[tok] + len(tgt_vocab)
-            else:
-                ext_vcb_idx = tgt_vocab[tok]
-            source_vocab_map[i,j, ext_vcb_idx] = 1
-    return source_vocab_map
-
-def _create_sparse_vocab_map(srcs, src_vocab, tgt_vocab):
-    # Size of extended vocabulary is the target vocab size + the number of 
-    # unique words in the source not already covered in the target vocab.
-    extended_vsize = len(tgt_vocab) + len(src_vocab)
-
-    batch_size = len(srcs)
-    steps = 1 + max([len(src) for src in srcs])
-    size = (batch_size * steps, extended_vsize)
-
-    rows = []
-    cols = []
-    
-    for i, src in enumerate(srcs):
-        batch_offset = i * steps
-        for j, tok in enumerate(src, 1):
-            if tok in src_vocab:
-                ext_vcb_idx = src_vocab[tok] + len(tgt_vocab)
-            else:
-                ext_vcb_idx = tgt_vocab[tok]
-            cols.append(ext_vcb_idx)
-            row = batch_offset + j
-            rows.append(row)
-    return torch.sparse.FloatTensor(
-        torch.LongTensor([rows, cols]), 
-        torch.FloatTensor([1.] * len(rows)), 
-        size=size)
 
 def batch_source_from_list_of_strings(source_texts, source_vocab):
      
@@ -418,3 +373,115 @@ def _batch_cpy_align_from_list_of_dict_of_strs(srcs, tgts, vcb, aligns,
     return _batch_cpy_align_from_list_of_list_of_strs(
         srcs, tgts, vcb, aligns, mixture_copy_prob=mixture_copy_prob,
         sparse_map=sparse_map)
+
+
+
+def batch_pointer_data(sources, target_vocab, targets=None):
+    if not isinstance(sources, (list, tuple)):
+        raise ValueError()
+        
+    if isinstance(sources[0], (list, tuple)) \
+            and isinstance(sources[0][0], str):
+        pass
+    elif isinstance(sources[0], str): 
+        sources = [src.split() for src in sources]
+        if targets is not None:
+            targets = [tgt.split() for tgt in targets]
+    elif isinstance(sources[0], dict) \
+            and isinstance(list(sources[0].values())[0], list) \
+            and len(target_vocab) == 1:
+        for name, target_vocab in target_vocab.items():
+            sources = [src[name] for src in sources]
+            if targets is not None:
+                targets = [tgt[name] for tgt in targets]
+    elif isinstance(sources[0], dict) \
+            and isinstance(list(sources[0].values())[0], str) \
+            and len(target_vocab) == 1:
+        for name, target_vocab in target_vocab.items():
+            sources = [src[name].split() for src in sources]
+            if targets is not None:
+                targets = [tgt[name].split() for tgt in targets]
+    else:
+        raise Exception()
+
+    extended_vocab = _batch_create_extended_vocab_impl(sources, target_vocab)
+    source_vocab_map = _create_dense_vocab_map(
+        sources, extended_vocab, target_vocab)
+    data = {"extended_vocab": extended_vocab, 
+            "source_vocab_map": source_vocab_map}
+
+    if targets is not None:
+        data["copy_targets"] = _batch_create_copy_targets(
+            targets, target_vocab, extended_vocab)
+    
+    return data
+
+def _batch_create_extended_vocab_impl(sources, target_vocab):
+    extended_words = OrderedDict()
+    for src in sources:
+        for token in src:
+            if token not in target_vocab:
+                extended_words[token] = True
+    return Vocab.from_word_list(extended_words.keys())
+
+def _batch_create_copy_targets(tgts, tgt_vocab, ext_vocab):
+
+    offset = len(tgt_vocab)
+    cpy_tgts = []
+    for tgt in tgts:
+        cpy_tgt = []
+        for tok in tgt:
+            if tok in ext_vocab:
+                cpy_tgt.append(ext_vocab[tok] + offset) 
+            else:
+                cpy_tgt.append(tgt_vocab[tok])
+        cpy_tgt.append(tgt_vocab.stop_index)
+        cpy_tgts.append(torch.LongTensor(cpy_tgt))
+    return batch_pad_and_stack_vector(cpy_tgts, tgt_vocab.pad_index)
+    
+def _create_dense_vocab_map(srcs, src_vocab, tgt_vocab):
+
+    # Size of extended vocabulary is the target vocab size + the number of 
+    # unique words in the source not already covered in the target vocab.
+    extended_vsize = len(tgt_vocab) + len(src_vocab)
+
+    batch_size = len(srcs)
+    steps = 1 + max([len(src) for src in srcs])
+
+    source_vocab_map = torch.FloatTensor(
+        batch_size, steps, extended_vsize).zero_()
+    for i, src in enumerate(srcs):
+        for j, tok in enumerate(src, 1):
+            if tok in src_vocab:
+                ext_vcb_idx = src_vocab[tok] + len(tgt_vocab)
+            else:
+                ext_vcb_idx = tgt_vocab[tok]
+            source_vocab_map[i,j, ext_vcb_idx] = 1
+    return source_vocab_map
+
+def _create_sparse_vocab_map(srcs, src_vocab, tgt_vocab):
+    # Size of extended vocabulary is the target vocab size + the number of 
+    # unique words in the source not already covered in the target vocab.
+    extended_vsize = len(tgt_vocab) + len(src_vocab)
+
+    batch_size = len(srcs)
+    steps = 1 + max([len(src) for src in srcs])
+    size = (batch_size * steps, extended_vsize)
+
+    rows = []
+    cols = []
+    
+    for i, src in enumerate(srcs):
+        batch_offset = i * steps
+        for j, tok in enumerate(src, 1):
+            if tok in src_vocab:
+                ext_vcb_idx = src_vocab[tok] + len(tgt_vocab)
+            else:
+                ext_vcb_idx = tgt_vocab[tok]
+            cols.append(ext_vcb_idx)
+            row = batch_offset + j
+            rows.append(row)
+    return torch.sparse.FloatTensor(
+        torch.LongTensor([rows, cols]), 
+        torch.FloatTensor([1.] * len(rows)), 
+        size=size)
