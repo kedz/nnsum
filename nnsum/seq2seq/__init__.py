@@ -14,12 +14,13 @@ from .encoder_decoder_base import EncoderDecoderBase
 
 # Seq2Seq Loss Functions
 from .cross_entropy_loss import CrossEntropyLoss
+from .pointer_generator_cross_entropy_loss import (
+        PointerGeneratorCrossEntropyLoss)
 
-
-#from .no_attention import NoAttention
-#from .dot_attention import DotAttention
-
-
+# Wrapper for generating from a model, with all the bells and whistles, e.g.
+# decoding, nbest lists, source copying, unknown word copying, and 
+# detokenization.
+from .generator import ConditionalGenerator
 
 
 
