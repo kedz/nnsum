@@ -90,6 +90,7 @@ def start_train_run(dataset_params, model_params, optimizer_params,
         batch_size=trainer_params["batch_size"])
 
     pad_index = model.decoder.embedding_context.vocab.pad_index
+    arch = model_params["architecture"]
     if model_params["architecture"] == "Seq2Seq":
         loss_func = s2s.CrossEntropyLoss(pad_index=pad_index)
     else:
@@ -101,7 +102,7 @@ def start_train_run(dataset_params, model_params, optimizer_params,
         if train_complete_callback:
             train_complete_callback(train_stats)
 
-        valid_stats = valid_epoch(model, test_batches, loss_func)
+        valid_stats = valid_epoch(model, test_batches, loss_func, arch)
         if valid_complete_callback:
             valid_complete_callback(valid_stats)
 
@@ -130,7 +131,7 @@ def train_epoch(model, batches, optim, loss_func):
 
     return {"x-entropy": total_xent / total_tokens}
 
-def valid_epoch(model, batches, loss_func):
+def valid_epoch(model, batches, loss_func, arch):
     model.eval()
     total_xent = 0
     total_tokens = 0
@@ -140,9 +141,14 @@ def valid_epoch(model, batches, loss_func):
         loss = loss_func(model_state, batch)
 
         pred_output = model.greedy_decode(batch).get_result("output").t()
-        total_correct += get_correct(
-            pred_output, batch["target_output_features"]["tokens"],
-            model.decoder.embedding_context.vocab.pad_index)
+        if arch == "Pointer-Generator":
+            total_correct += get_correct(
+                pred_output, batch["copy_targets"],
+                model.decoder.embedding_context.vocab.pad_index)
+        else:
+            total_correct += get_correct(
+                pred_output, batch["target_output_features"]["tokens"],
+                model.decoder.embedding_context.vocab.pad_index)
 
         num_tokens = batch["target_lengths"].sum().item()
         total_xent += loss.item() * num_tokens

@@ -34,7 +34,7 @@ class ExamplePredictionWidget(object):
                 self._show_example()
         self._w_example.observe(on_value_change, names=["value"])
 
-        self._m_main = widgets.VBox([
+        self._w_main = widgets.VBox([
             widgets.HBox([self._w_part, self._w_example]), 
             widgets.Label("Source"),
             self._w_source,
@@ -46,12 +46,6 @@ class ExamplePredictionWidget(object):
             self._w_predicted_target,
             self._w_alignment,
         ])
-
-        with self._w_alignment:
-            matplotlib.use('nbAgg')
-            self._fig = plt.figure()
-            self._ax = self._fig.add_subplot(1,1,1)
-            plt.show(self._fig)
 
     def make_datasets(self, dataset_params):
         train_dataset = CopyDataset(dataset_params["vocab_size"],
@@ -92,48 +86,44 @@ class ExamplePredictionWidget(object):
                 result.append(tgt_vcb[idx])
         return result
 
+    def _plot_attention(self, attn, source_tokens, target_tokens):
+        matplotlib.use('agg')
+        fig = plt.figure()
+        ax = fig.add_subplot(1,1,1)
+        ax.matshow(attn.data.numpy())
+        ax.set_xticklabels([''] + target_tokens)
+        ax.set_yticklabels([''] + source_tokens)
+        fig.savefig("temp.png")
+
+        with open("temp.png", "rb") as fp:
+            img = widgets.Box([widgets.Image(value=fp.read())])
+        self._w_main.children = list(self._w_main.children[:-1]) + [img]
+        plt.close(fig)
+
+
     def _show_example(self):
         src_vocabs = self._model.encoder.embedding_context.named_vocabs
         tgt_ec = self._model.decoder.embedding_context
         tgt_vocabs = tgt_ec.named_vocabs
 
-        self._w_source.value = " ".join(self.example["source"]["tokens"])
-        self._w_expected_target.value = " ".join(
-            self.example["target"]["tokens"])
+        src_tokens = ["<sos>"] + self.example["source"]["tokens"]
+        exp_tgt_tokens = self.example["target"]["tokens"] + ["<eos>"]
+
+        self._w_source.value = " ".join(src_tokens)
+        self._w_expected_target.value = " ".join(exp_tgt_tokens)
 
         tgt_vcb = tgt_vocabs["tokens"]
         self._w_expected_target_dec_vcb.value = " ".join(
-            [tgt_vcb[tgt_vcb[tok]]
-             for tok in self.example["target"]["tokens"]])
+            [tgt_vcb[tgt_vcb[tok]] for tok in exp_tgt_tokens])
         batch = self.make_batch_example(self.example, src_vocabs, tgt_vocabs)
         greedy_search = self._model.greedy_decode(batch, max_steps=1000)
         pred_tokens = self.convert_prediction(
             greedy_search.get_result("output").t()[0], tgt_vcb,
             batch.get("extended_vocab", None))
 
-        
-
-
-
-#        pred_tokens = tgt_ec.convert_index_tensor(
-#            greedy_search.get_result("output").t()[0])
-        self._w_predicted_target.value = " ".join(pred_tokens[:-1])
-
         ctx_attn = greedy_search.get_result("context_attention")[:,0].t()
-        with self._w_alignment:
-            self._ax.matshow(ctx_attn.data.numpy())
-            self._ax.set_xticklabels([''] + pred_tokens)
-            self._ax.set_yticklabels(
-                ['', "<START>"] + self.example["target"]["tokens"])
-            
-
-
-
-#        self._widgets["expected_target"].value = " ".join(
-#                ex["target"]["tokens"])
-
-
-#        ex = 
+        self._plot_attention(ctx_attn, src_tokens, pred_tokens)
+        self._w_predicted_target.value = " ".join(pred_tokens)
 
     def __call__(self):
-        return self._m_main
+        return self._w_main
