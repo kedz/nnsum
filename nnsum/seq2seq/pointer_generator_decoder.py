@@ -32,11 +32,20 @@ class PointerGeneratorDecoder(RNNDecoder):
         target_probability = 1. - source_probability
 
         source_distribution = []
-        attn_steps = copy_attention.permute(1, 0, 2).split(1, dim=1)
-        for attn_step in attn_steps:
-            source_distribution.append(
-                attn_step.bmm(context["source_vocab_map"]).permute(1, 0, 2))
-        source_distribution = torch.cat(source_distribution, 0)
+
+        source_distribution = self._project_attention(
+            copy_attention, context["source_vocab_map"])
+
+#        print(copy_attention.permute(1, 0, 2).size())
+#        attn_steps = copy_attention.permute(1, 0, 2).split(1, dim=1)
+#        print(attn_steps[0].size())
+#        print(context["source_vocab_map"].size())
+#        input()
+#        for attn_step in attn_steps:
+#            
+#            source_distribution.append(
+#                attn_step.bmm(context["source_vocab_map"]).permute(1, 0, 2))
+#        source_distribution = torch.cat(source_distribution, 0)
 
         pointer_probability = source_probability * source_distribution
         generator_probability = target_probability * target_distribution
@@ -48,6 +57,24 @@ class PointerGeneratorDecoder(RNNDecoder):
         next_state["generator_probability"] = generator_probability
 
         return next_state
+
+    def _project_attention(self, attns, vmaps):
+        if isinstance(vmaps, list):
+            return self._project_attention_sparse(attns, vmaps)
+        else:
+            return self._project_attention_dense(attns, vmaps)
+
+    def _project_attention_sparse(self, attns, vmaps):
+        mapped_attns = [] 
+        for attn, vmap in zip(attns.split(1, dim=1), vmaps):
+            # probs is steps x 1 x ext_vocab_size
+            mapped_attn = vmap.t().matmul(attn.squeeze(1).t()).t().unsqueeze(1)
+            mapped_attns.append(mapped_attn)
+        mapped_attns = torch.cat(mapped_attns, dim=1)
+        return mapped_attns
+
+    def _project_attention_dense(self, attns, vmaps):
+        return attns.permute(1, 0, 2).bmm(vmaps).permute(1, 0, 2)
 
     def next_state(self, prev_state, context, compute_log_probability=False,
                    compute_output=False):

@@ -57,14 +57,14 @@ def target_vocab():
 
 @pytest.fixture(scope="module")
 def train_data(source_texts, target_texts, source_vocab, target_vocab,
-               alignments):
+               alignments, data_params):
 
     batch = {}
     batch.update(seq2seq_batcher.batch_source(source_texts, source_vocab))
     batch.update(seq2seq_batcher.batch_target(target_texts, target_vocab))
     batch.update(seq2seq_batcher.batch_copy_alignments(
         source_texts, target_texts, target_vocab, alignments,
-        sparse_map=False))
+        sparse_map=data_params["sparse"]))
 
     return batch
 
