@@ -376,7 +376,7 @@ def _batch_cpy_align_from_list_of_dict_of_strs(srcs, tgts, vcb, aligns,
 
 
 
-def batch_pointer_data(sources, target_vocab, targets=None):
+def batch_pointer_data(sources, target_vocab, targets=None, sparse=False):
     if not isinstance(sources, (list, tuple)):
         raise ValueError()
         
@@ -405,8 +405,12 @@ def batch_pointer_data(sources, target_vocab, targets=None):
         raise Exception()
 
     extended_vocab = _batch_create_extended_vocab_impl(sources, target_vocab)
-    source_vocab_map = _create_dense_vocab_map(
-        sources, extended_vocab, target_vocab)
+    if sparse:
+        source_vocab_map = _create_sparse_vocab_map(
+            sources, extended_vocab, target_vocab)
+    else:
+        source_vocab_map = _create_dense_vocab_map(
+            sources, extended_vocab, target_vocab)
     data = {"extended_vocab": extended_vocab, 
             "source_vocab_map": source_vocab_map}
 
@@ -466,22 +470,21 @@ def _create_sparse_vocab_map(srcs, src_vocab, tgt_vocab):
 
     batch_size = len(srcs)
     steps = 1 + max([len(src) for src in srcs])
-    size = (batch_size * steps, extended_vsize)
+    size = (steps, extended_vsize)
 
-    rows = []
-    cols = []
-    
-    for i, src in enumerate(srcs):
-        batch_offset = i * steps
+    vmaps = []    
+    for src in srcs:
+        rows = []
+        cols = []
         for j, tok in enumerate(src, 1):
             if tok in src_vocab:
                 ext_vcb_idx = src_vocab[tok] + len(tgt_vocab)
             else:
                 ext_vcb_idx = tgt_vocab[tok]
             cols.append(ext_vcb_idx)
-            row = batch_offset + j
-            rows.append(row)
-    return torch.sparse.FloatTensor(
-        torch.LongTensor([rows, cols]), 
-        torch.FloatTensor([1.] * len(rows)), 
-        size=size)
+            rows.append(j)
+        vmaps.append(torch.sparse.FloatTensor(
+            torch.LongTensor([rows, cols]), 
+            torch.FloatTensor([1] * len(rows)),
+            size=size))
+    return vmaps
