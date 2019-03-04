@@ -8,10 +8,10 @@ from .rnn_decoder import RNNDecoder
 
 class PointerGeneratorDecoder(RNNDecoder):
     def __init__(self, embedding_context, hidden_dim=512, num_layers=1,
-                 rnn_cell="GRU", attention="dot"):
+                 rnn_cell="GRU", attention="dot", dropout=0.):
         super(PointerGeneratorDecoder, self).__init__(
             embedding_context, hidden_dim=hidden_dim, num_layers=num_layers,
-            rnn_cell=rnn_cell, attention=attention)
+            rnn_cell=rnn_cell, attention=attention, dropout=0.)
 
         self._input_switch_net = nn.Linear(embedding_context.output_size, 1)
         self._state_switch_net = nn.Linear(hidden_dim, 1, bias=False)

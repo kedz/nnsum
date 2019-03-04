@@ -16,6 +16,7 @@ from .encoder_decoder_base import EncoderDecoderBase
 from .cross_entropy_loss import CrossEntropyLoss
 from .pointer_generator_cross_entropy_loss import (
         PointerGeneratorCrossEntropyLoss)
+from .attention_coverage import AttentionCoverage
 
 # Wrapper for generating from a model, with all the bells and whistles, e.g.
 # decoding, nbest lists, source copying, unknown word copying, and 

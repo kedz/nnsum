@@ -15,14 +15,14 @@ class Seq2SeqDataLoader(DataLoader):
                  batch_sampler=None, num_workers=0, pin_memory=False, 
                  drop_last=False, timeout=0, worker_init_fn=None,
                  include_original_data=False, sort=True,
-                 has_copy_attention=False):
+                 make_extended_vocab=False):
 
 #        if isinstance(dataset, AlignedDataset):
         collate_fn = self._aligned_collate_fn 
         #else:
         #    collate_fn = self._source_collate_fn
         self.include_original_data = include_original_data
-        self.has_copy_attention = has_copy_attention
+        self.make_extended_vocab = make_extended_vocab
         self._source_vocabs = source_vocabs
         self._target_vocabs = target_vocabs
         self._is_sorted = sorted
@@ -46,7 +46,8 @@ class Seq2SeqDataLoader(DataLoader):
         return self._target_vocabs
 
     def _sort_batch(self, batch):
-        indices = np.argsort([-len(item["source"]["tokens"]) 
+        key = list(self.source_vocabs.keys())[0]
+        indices = np.argsort([-len(item["source"]["sequence"][key]) 
                               for item in batch])
         return [batch[i] for i in indices]
          
@@ -55,20 +56,110 @@ class Seq2SeqDataLoader(DataLoader):
         if self.is_sorted:
             batch = self._sort_batch(batch)
 
-        source_items = [item["source"] for item in batch]
+        source_items = [item["source"]["sequence"] for item in batch]
         data = batch_source(source_items, self.source_vocabs)
 
+        # make this general. 
+        data["source_tokens"] = [item["tokens"] 
+                                 for item in source_items]
+
+        if self.include_original_data:
+            data["original_data"] = batch
+#[item["source"]["original_data"]
+ #                                    for item in batch]
         if "target" in batch[0]:
-            target_items = [item["target"] for item in batch]
-            data.update(batch_target(target_items, self.target_vocabs))
+            if "references" in batch[0]["target"]:
+                return self._batch_multiref_targets(data, batch)
+            else:
+                return self._batch_singleref_targets(data, batch)
+
+        if self.make_extended_vocab:
+            data.update(batch_pointer_data(source_items, self.target_vocabs))
+        return data
+
+    def _batch_multiref_targets(self, data, batch):
+       
+        feature, target_vocab = list(self.target_vocabs.items())[0] 
+
+        num_refs = [len(ex["target"]["references"]) for ex in batch]
+        max_refs = max(num_refs)
+
+        target_items = []
+
+        for ex in batch:
+            seqs = []
+            for ref in ex["target"]["references"]:
+                seqs.append(ref["sequence"])
+            if len(seqs) < max_refs:
+                diff = max_refs - len(seqs)
+                seqs.extend([{feature: [target_vocab.pad_token]}] * diff)
+            target_items.extend(seqs)
+
+        target_data = batch_target(target_items, self.target_vocabs)
+        tgt_out_ftrs = target_data["target_output_features"][feature].view(
+            len(batch), max_refs, -1)
+        tgt_in_ftrs = target_data["target_input_features"][feature].view(
+            len(batch), max_refs, -1)
+        tgt_lens = target_data["target_lengths"].view(len(batch), max_refs)
+
+        for i, nref in enumerate(num_refs):
+            tgt_out_ftrs.data[i,nref:].fill_(target_vocab.pad_index)
+            tgt_in_ftrs.data[i,nref:].fill_(target_vocab.pad_index)
+            tgt_lens.data[i,nref:].fill_(target_vocab.pad_index)
+
+        target_data["num_references"] = torch.LongTensor(num_refs)
+        target_data["max_references"] = max_refs
+
+        data.update(target_data) 
+
+        if batch[0]["target"]["references"][0]["reference_string"]:
+            data["reference_strings"] = [
+                [ref["reference_string"] for ref in ex["target"]["references"]]
+                for ex in batch
+            ]
+       
+        if self.make_extended_vocab:
+            source_items = []
+            for ex in batch:
+                source_items.extend([ex["source"]["sequence"]] * max_refs)
+            ev_data = batch_pointer_data(
+                source_items, self.target_vocabs, targets=target_items)
+
+            ct = ev_data["copy_targets"].view(len(batch), max_refs, -1)
+            for i, nref in enumerate(num_refs):
+                ct.data[i,nref:].fill_(target_vocab.pad_index)
+            
+            data.update(batch_pointer_data(
+                [ex["source"]["sequence"] for ex in batch], 
+                self.target_vocabs))
+            data["copy_targets"] = ev_data["copy_targets"]
+        return data
+    
+    def _batch_singleref_targets(self, data, batch):
+        target_items = [item["target"]["sequence"] for item in batch]
+        data.update(batch_target(target_items, self.target_vocabs))
+        reference_strings = [[ex["target"]["reference_string"]] 
+                             for ex in batch]
+        data["reference_strings"] = reference_strings
+
+        if self.make_extended_vocab:
+            source_items = [item["source"]["sequence"] for item in batch]
             data.update(batch_pointer_data(source_items, self.target_vocabs,
                                            targets=target_items))
         
-        else:
-            data.update(batch_pointer_data(source_items, self.target_vocabs))
-
         return data
 
+#            target_items = [item["target"]["sequence"] for item in batch]
+#            data.update(batch_target(target_items, self.target_vocabs))
+#            if "reference_string" in batch[0]["target"]:
+#                data["reference_strings"] = [
+#                    [item["target"]["reference_string"]] for item in batch]
+#        else:
+#            target_items = None
+#
+#                                           targets=target_items))
+#
+#        return data
 
 
 
@@ -84,12 +175,13 @@ class Seq2SeqDataLoader(DataLoader):
 
 
 
-        if "references" not in batch[0][1]:
-            return self._aligned_collate_fn_single_ref(batch)
-        else:
-            return self._aligned_collate_fn_multi_ref(batch)
 
-
+#        if "references" not in batch[0][1]:
+#            return self._aligned_collate_fn_single_ref(batch)
+#        else:
+#            return self._aligned_collate_fn_multi_ref(batch)
+#
+#
 
 
 

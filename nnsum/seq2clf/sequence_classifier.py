@@ -4,39 +4,32 @@ from collections import OrderedDict
 
 
 class SequenceClassifier(nn.Module):
-    def __init__(self, source_embedding_context, encoder,
-                 target_embedding_context):
+    def __init__(self, encoder, predictor):
         super(SequenceClassifier, self).__init__()
 
-        self._src_ec = source_embedding_context
         self._encoder = encoder
-        self._tgt_ec = target_embedding_context
-
-    @property
-    def source_embedding_context(self):
-        return self._src_ec
+        self._predictor = predictor
 
     @property
     def encoder(self):
         return self._encoder
-
+    
     @property
-    def target_embedding_context(self):
-        return self._tgt_ec
+    def predictor(self):
+        return self._predictor
 
     def initialize_parameters(self):
-        print(" Initializing source embedding context parameters.")
-        self.source_embedding_context.initialize_parameters()
         print(" Initializing encoder parameters.")
         self.encoder.initialize_parameters()
-        print(" Initializing target embedding context parameters.")
-        self.target_embedding_context.initialize_parameters()
+        print(" Initializing predictor parameters.")
+        self.predictor.initialize_parameters()
 
     def forward(self, inputs):
-        emb = self._src_ec(inputs["source_features"])
-        rep = self._encoder(emb)
-        logits = self._tgt_ec(rep)
-        return logits  #, self._encoder.attention()
+        encoder_output, encoder_state = self.encoder(
+            inputs["source_input_features"],
+            inputs["source_lengths"])
+        logits = self.predictor(encoder_output)
+        return {"target_logits": logits, "encoder_state": encoder_state}
     
     def log_probs(self, inputs):
         all_logits = self.forward(inputs)

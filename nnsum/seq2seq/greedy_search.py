@@ -19,6 +19,7 @@ class GreedySearch(DecoderSearch):
         # Mask outputs if we have already completed that batch item.
         next_state["output"].data.view(-1).masked_fill_(
             ~active_items, self.pad_index)
+
         return next_state
 
     def check_termination(self, next_state, active_items):

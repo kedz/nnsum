@@ -23,3 +23,28 @@ class RAMDataset(Dataset):
     
     def __len__(self):
         return len(self._data) 
+
+    def word_counts(self):
+        if isinstance(self[0]["sequence"], (list, tuple)):
+            return self._word_counts_from_list()
+        else:
+            return self._word_counts_from_dict()
+    
+    def _word_counts_from_list(self):
+        counts = {}
+        for ex in self:
+            for token in ex["sequence"]:
+                counts[token] = counts.get(token, 0) + 1
+        return {"tokens": counts}
+
+    def _word_counts_from_dict(self):
+        features = set(self[0]["sequence"].keys())
+        counts = {ftr: dict() for ftr in features}
+        for ex in self:
+            if set(ex["sequence"].keys()) != features:
+                raise Exception("Expected features: {} but found: {}".format(
+                    str(features), str(set(ex["sequence"].keys()))))
+            for ftr, tokens in ex["sequence"].items():
+                for token in tokens:
+                    counts[ftr][token] = counts[ftr].get(token, 0) + 1
+        return counts            

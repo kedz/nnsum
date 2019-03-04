@@ -24,6 +24,16 @@ class Vocab(object):
         return Vocab.from_word_list(word_list, **kwargs)
 
     @staticmethod
+    def from_counts(counts, at_least=0, top_k=None, **kwargs):
+
+        wc = sorted(counts.items(), key=lambda x: x[0], reverse=True)
+        wc.sort(key=lambda x: x[1], reverse=True)
+        if top_k is not None and top_k > 0:
+            wc = wc[:top_k]
+        word_list = [w for w, c in wc if c >= at_least]
+        return Vocab.from_word_list(word_list, counts=counts, **kwargs)
+
+    @staticmethod
     def from_word_list(word_list, pad=None, unk=None, 
                        start=None, stop=None, counts=None):
 
@@ -47,6 +57,8 @@ class Vocab(object):
                 index2word.append(word)
         return Vocab(index2word, word2index, pad=pad, unk=unk, 
                      start=start, stop=stop, counts=counts)
+
+    
 
     def __getitem__(self, word_or_index):
         if isinstance(word_or_index, str):
@@ -103,6 +115,10 @@ class Vocab(object):
 
     def enumerate(self):
         return enumerate(self._index2tokens)
+           
+    def __iter__(self):
+        for word in self._index2tokens:
+            yield word           
             
     def __contains__(self, token):
         return token in self._tokens2index

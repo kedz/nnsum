@@ -1,11 +1,15 @@
 from nnsum.data.seq2seq_batcher import batch_source, batch_pointer_data
+from sacremoses import MosesDetokenizer
 
 
 class ConditionalGenerator(object):
-    def __init__(self, model, max_steps=1000, replace_unknown=True):
+    def __init__(self, model, max_steps=1000, replace_unknown=True,
+                 detokenize=False):
         self._model = model
         self._max_steps = max_steps
         self._replace_unknown = replace_unknown
+        self._detok = MosesDetokenizer() if detokenize else None
+        self._detokenize = detokenize
 
     @property
     def replace_unknown(self):
@@ -31,7 +35,7 @@ class ConditionalGenerator(object):
                     tokens.append(tgt_vocab.unknown_token)
         return tokens
 
-    def generate(self, conditioning):
+    def generate(self, conditioning, return_state=False):
         batch = batch_source(
             [conditioning], self._model.encoder.embedding_context.named_vocabs)
         batch.update(
@@ -48,5 +52,42 @@ class ConditionalGenerator(object):
             ext_vocab=batch.get("extended_vocab", None),
             attention=search.get_result("context_attention")[:,0,1:],
             source_tokens=conditioning["tokens"])
-       
-        return " ".join(tokens)
+
+        if self._detokenize:
+            out_str = self._apply_detokenize(tokens)
+        else:
+            out_str = " ".join(tokens)
+
+        if return_state:
+            return out_str, search
+        else:
+            return out_str
+
+    def generate_from_batch(self, batch):
+        self._model.eval()
+        search = self._model.greedy_decode(batch, max_steps=self._max_steps)
+
+        tokens_name = self._model.decoder.embedding_context.name
+
+        all_tokens = []
+        outputs = search.get_result("output").cpu().t()
+        attn = search.get_result("context_attention")
+        attn = attn.cpu() if attn is not None else attn
+
+        for i, output in enumerate(outputs):
+            all_tokens.append(
+                self._clean_outputs(
+                    output,
+                    self._model.decoder.embedding_context.vocab,
+            ext_vocab=batch.get("extended_vocab", None),
+            attention=attn[:,i,1:] if attn is not None else None,
+            source_tokens=batch["source_tokens"][i]))
+
+        if self._detokenize:
+            return [self._apply_detokenize(tokens) for tokens in all_tokens]
+        return all_tokens
+
+    def _apply_detokenize(self, tokens):
+        string = self._detok.detokenize(tokens).replace("<SENT>", "")\
+            .replace(" - ", "-")
+        return string

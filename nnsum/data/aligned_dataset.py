@@ -14,4 +14,4 @@ class AlignedDataset(Dataset):
         return len(self.dataset1)
 
     def __getitem__(self, index):
-        return (self.dataset1[index], self.dataset2[index])
+        return {"source": self.dataset1[index], "target": self.dataset2[index]}

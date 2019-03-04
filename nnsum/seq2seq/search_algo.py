@@ -71,14 +71,15 @@ class DecoderSearch(object):
         return context, context_mask
 
     def _initialize_search_state(self, encoder_state):
-        output = self.decoder.start_inputs(self.batch_size).t()
+        output = self.decoder.start_inputs(self.batch_size, 
+                                           device=encoder_state.device).t()
         return SearchState(rnn_state=encoder_state, output=output)
 
     def search(self):
        
         search_state = self._init_search_state
-        active_items = torch.ByteTensor(
-            self.batch_size, device=search_state["rnn_state"].device).fill_(1)
+        active_items = search_state["rnn_state"].new(
+            self.batch_size).byte().fill_(1)
 
         # Perform search until we either trigger a termination condition for
         # each batch item or we reach the maximum number of search steps.
@@ -106,6 +107,7 @@ class DecoderSearch(object):
         search_state = self._state_history[0]
         for next_state in self._state_history[1:]:
             search_state.append(next_state)
+
         self._state_history = search_state
         self._state_history["active_items"] = active_items
 
@@ -187,6 +189,8 @@ class DecoderSearch(object):
     def _collect_context_attention(self):
 
         ctx_attn = self._state_history["context_attention"]
+        if ctx_attn is None:
+            return
 
         # (Optionally) Mask incomplete sequences with 0. Skip this by default.
         if not self.return_incomplete:

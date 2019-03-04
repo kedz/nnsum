@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 import nnsum.attention
 from .rnn_state import RNNState
@@ -8,10 +9,11 @@ from .search_state import SearchState
 
 class RNNDecoder(nn.Module):
     def __init__(self, embedding_context, hidden_dim=512, num_layers=1,
-                 rnn_cell="GRU", attention="none"):
+                 rnn_cell="GRU", dropout=0., attention="none", attn_temp=1.):
         super(RNNDecoder, self).__init__()
 
         rnn_cell = rnn_cell.upper()
+        self._dropout = dropout
         assert rnn_cell in ["LSTM", "GRU", "RNN"]
         assert hidden_dim > 0
         assert num_layers > 0
@@ -19,7 +21,8 @@ class RNNDecoder(nn.Module):
 
         self._emb_ctx = embedding_context        
         self._rnn = getattr(nn, rnn_cell)(
-            embedding_context.output_size, hidden_dim, num_layers=num_layers)
+            embedding_context.output_size, hidden_dim, num_layers=num_layers,
+            dropout=dropout if num_layers > 1 else 0.)
 
         pred_dim = hidden_dim if attention == "none" else 2 * hidden_dim
         self._predictor = nn.Sequential(
@@ -31,12 +34,14 @@ class RNNDecoder(nn.Module):
             self._context_attention = None
         else:
             self._context_attention = nnsum.attention.DotAttention(
-                hidden_dim, hidden_dim, temp=1.)
+                hidden_dim, hidden_dim, temp=attn_temp)
 
     def forward(self, prev_rnn_state, inputs, context):
 
         rnn_input = self.embedding_context(inputs)
         rnn_output, rnn_state = self.rnn(rnn_input, prev_rnn_state)
+        rnn_output = F.dropout(rnn_output, p=self._dropout, 
+                               training=self.training)
 
         context_attention, weighted_context = self._compute_attention(
             context.get("encoder_output", None), 
@@ -106,9 +111,10 @@ class RNNDecoder(nn.Module):
     def predictor(self):
         return self._predictor
 
-    def start_inputs(self, batch_size):
-        return torch.LongTensor(
-            [[self.embedding_context.vocab.start_index]] * batch_size)
+    def start_inputs(self, batch_size, device=None):
+        return torch.tensor(
+            [[self.embedding_context.vocab.start_index]] * batch_size,
+            device=device)
         inputs = {n: torch.LongTensor([[v.start_index]] * batch_size)   
                   for n, v in self.embedding_context.named_vocabs.items()}
         return inputs 

@@ -10,6 +10,11 @@ class LabelEmbeddingContext(nn.Module):
         self._vocab = vocab
         self._predictor = nn.Linear(embedding_size, len(vocab))
         self._name = name
+        self._embedding_size = embedding_size
+
+    @property
+    def embedding_size(self):
+        return self._embedding_size
 
     @property
     def name(self):

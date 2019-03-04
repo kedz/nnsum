@@ -115,11 +115,16 @@ def batch_target_from_list_of_list_of_strings(target_texts, target_vocab):
         lengths.append(row_in.size(0))
         data_in.append(row_in)
         data_out.append(row_out)
-    lengths = torch.LongTensor(lengths)
+
     data_in = batch_pad_and_stack_vector(data_in, target_vocab.pad_index)
     data_out = batch_pad_and_stack_vector(data_out, target_vocab.pad_index)
+    mask = torch.ByteTensor(data_in.size()).zero_()
+    for i, length in enumerate(lengths):
+        mask[i,length:].fill_(1)
+    lengths = torch.LongTensor(lengths)
     return {"target_input_features": {"tokens": data_in},
             "target_output_features": {"tokens": data_out},
+            "target_mask": mask,
             "target_lengths": lengths}
 
 def _batch_cpy_align_from_list_of_list_of_strs(srcs, tgts, vcb, aligns,
@@ -201,11 +206,15 @@ def batch_target_from_list_of_strings(target_texts, target_vocab):
         lengths.append(row_in.size(0))
         data_in.append(row_in)
         data_out.append(row_out)
-    lengths = torch.LongTensor(lengths)
     data_in = batch_pad_and_stack_vector(data_in, target_vocab.pad_index)
     data_out = batch_pad_and_stack_vector(data_out, target_vocab.pad_index)
+    mask = torch.ByteTensor(data.size()).zero_()
+    for i, length in enumerate(lengths):
+        mask[i,length:].fill_(1)
+    lengths = torch.LongTensor(lengths)
     return {"target_input_features": {"tokens": data_in},
             "target_output_features": {"tokens": data_out},
+            "target_mask": mask,
             "target_lengths": lengths}
 
 def _batch_cpy_align_from_list_of_strs(srcs, tgts, vcb, aligns,
@@ -221,11 +230,12 @@ def batch_source_from_list_of_dict_of_list_of_strings(source_dicts,
                                                       source_vocab_dicts):
 
     all_lengths = []
-    all_data = {name: list() for name in source_dicts[0].keys()}
+    all_data = {name: list() for name in source_vocab_dicts.keys()}
     
     for item in source_dicts:
         length = None
-        for name, tokens in item.items():
+        for name in all_data.keys():
+            tokens = item[name]
             vcb = source_vocab_dicts[name]
             row = torch.LongTensor(
                 [vcb.start_index] + [vcb[t] for t in tokens])
@@ -276,10 +286,15 @@ def batch_target_from_list_of_dict_of_list_of_strings(target_dicts,
             all_data_in[name], target_vocab_dicts[name].pad_index)
         all_data_out[name] = batch_pad_and_stack_vector(
             all_data_out[name], target_vocab_dicts[name].pad_index)
+
+    mask = torch.ByteTensor(all_data_in[name].size()).zero_()
+    for i, length in enumerate(all_lengths):
+        mask[i,length:].fill_(1)
     all_lengths = torch.LongTensor(all_lengths)
 
     return {"target_input_features": all_data_in,
             "target_output_features": all_data_out,
+            "target_mask": mask,
             "target_lengths": all_lengths}
 
 def _batch_cpy_align_from_list_of_dict_of_list_of_strs(srcs, tgts, vcb, aligns,
@@ -300,11 +315,12 @@ def batch_source_from_list_of_dict_of_strings(source_dicts,
                                               source_vocab_dicts):
 
     all_lengths = []
-    all_data = {name: list() for name in source_dicts[0].keys()}
+    all_data = {name: list() for name in source_vocab_dicts.keys()}
     
     for item in source_dicts:
         length = None
-        for name, text in item.items():
+        for name in all_data.keys():
+            text = item[name]
             vcb = source_vocab_dicts[name]
             row = torch.LongTensor(
                 [vcb.start_index] + [vcb[t] for t in text.split()])
@@ -354,10 +370,14 @@ def batch_target_from_list_of_dict_of_strings(target_dicts,
             all_data_in[name], target_vocab_dicts[name].pad_index)
         all_data_out[name] = batch_pad_and_stack_vector(
             all_data_out[name], target_vocab_dicts[name].pad_index)
+    mask = torch.ByteTensor(all_data_in[name].size()).zero_()
+    for i, length in enumerate(all_lengths):
+        mask[i,length:].fill_(1)
     all_lengths = torch.LongTensor(all_lengths)
 
     return {"target_input_features": all_data_in,
             "target_output_features": all_data_out,
+            "target_mask": mask,
             "target_lengths": all_lengths}
 
 def _batch_cpy_align_from_list_of_dict_of_strs(srcs, tgts, vcb, aligns,

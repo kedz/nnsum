@@ -37,8 +37,6 @@ class EmbeddingContext(nn.Module):
                                      start=start, stop=stop)    
         return EmbeddingContext(vocab, embedding_size, **kwargs)
 
-
-
     def __init__(self, vocab, embedding_size, 
                  token_dropout=0.0, token_dropout_mode="zero",
                  embedding_dropout=0.0, initializer=None, 
@@ -83,7 +81,7 @@ class EmbeddingContext(nn.Module):
 
     def initialize_parameters(self):
 
-        print(" Initializing feature context: {}".format(self.name))
+        #print(" Initializing feature context: {}".format(self.name))
         nn.init.normal_(self.embeddings.weight)
         if self.vocab.pad_index is not None:
             self.embeddings.weight[self.vocab.pad_index].data.fill_(0)

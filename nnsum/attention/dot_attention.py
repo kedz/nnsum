@@ -50,6 +50,11 @@ class DotAttention(nn.Module):
             scores.data.masked_fill_(context_mask.unsqueeze(1), float("-inf"))
         
         attn = torch.softmax(scores, 2)
+
+        if context_mask is not None:
+            nan_mask = torch.all(context_mask, dim=1).view(-1, 1, 1)
+            attn.data.masked_fill_(nan_mask, 0.)
+
         if self.compute_composition:
             composition = attn.bmm(context).permute(1, 0, 2)
             attn = attn.permute(1, 0, 2)
