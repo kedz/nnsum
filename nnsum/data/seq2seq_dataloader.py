@@ -138,9 +138,10 @@ class Seq2SeqDataLoader(DataLoader):
     def _batch_singleref_targets(self, data, batch):
         target_items = [item["target"]["sequence"] for item in batch]
         data.update(batch_target(target_items, self.target_vocabs))
-        reference_strings = [[ex["target"]["reference_string"]] 
-                             for ex in batch]
-        data["reference_strings"] = reference_strings
+        if "reference_string" in batch[0]["target"]:
+            reference_strings = [[ex["target"]["reference_string"]] 
+                                 for ex in batch]
+            data["reference_strings"] = reference_strings
 
         if self.make_extended_vocab:
             source_items = [item["source"]["sequence"] for item in batch]
