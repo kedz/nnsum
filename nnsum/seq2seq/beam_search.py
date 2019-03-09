@@ -10,8 +10,10 @@ from .rnn_state import RNNState
 class BeamSearch(DecoderSearch):
     def __init__(self, decoder, encoder_state, context, context_mask=None,
                  beam_size=8, max_steps=1000, rescoring_func=None,
-                 return_incomplete=False, sort_by_score=True):
+                 return_incomplete=False, sort_by_score=True, 
+                 start_input=None):
 
+        self._start_input = start_input
         self._beam_size = beam_size
         if rescoring_func is not None:
             self._rescore_beam = rescoring_func
@@ -53,7 +55,13 @@ class BeamSearch(DecoderSearch):
         
         nl, bh_sz, state_dims = encoder_state.size()
         bm_sz = self.beam_size
-        outputs = self.decoder.start_inputs(bh_sz * bm_sz).t()
+
+        
+        output = self.decoder.start_inputs(bh_sz * bm_sz).t()
+        if self._start_input is not None:
+            import warnings
+            warnings.warn("Using start input is experimental and will change.")
+            output = self._start_input
         
         slp = encoder_state.new(bh_sz, bm_sz, 1).fill_(0.)
         slp.data[:,1:].fill_(float("-inf"))
@@ -61,23 +69,28 @@ class BeamSearch(DecoderSearch):
         init_enc_state = encoder_state.unsqueeze(2).repeat(1, 1, bm_sz, 1)\
             .view(nl, bh_sz * bm_sz, state_dims)
 
-        return SearchState(outputs=outputs, 
+        return SearchState(output=output, 
                            rnn_state=init_enc_state,
                            sequence_log_probability=slp)
 
     def _initialize_context(self, context, context_mask):
         if context is None:
             return None, None
-        bh_sz, ctx_len, ctx_dims = context.size()
+
+        if "source_mask" in context:
+            print("source!! AHH!")
+            exit()
+        bh_sz, ctx_len, ctx_dims = context["encoder_output"].size()
         bm_sz = self.beam_size
-        init_context = context.unsqueeze(1).repeat(1, bm_sz, 1, 1)\
+        init_context = context["encoder_output"].unsqueeze(1)\
+            .repeat(1, bm_sz, 1, 1)\
             .view(bh_sz * bm_sz, ctx_len, ctx_dims)
         if context_mask is not None:
             init_mask = context_mask.unsqueeze(1).repeat(1, bm_sz, 1, 1)\
                 .view(bh_sz * bm_sz, ctx_len, ctx_dims)
         else:
             init_mask = None
-        return init_context, init_mask
+        return {"encoder_output": init_context}, init_mask
 
     # TODO Make sure this interface is general enough for lm or 
     # arbitrary model based rescoring ##, history, next_tokens):
@@ -87,12 +100,12 @@ class BeamSearch(DecoderSearch):
     def next_state(self, prev_state, active_batches):
 
         next_state = self.decoder.next_state(
-            prev_state["rnn_state"], inputs=prev_state["outputs"].t(),
-            context=self.context, context_mask=self.context_mask,
+            prev_state, self.context,
             compute_log_probability=True)
 
         log_probs = next_state["log_probability"].view(
             self.batch_size, self._beam_size, -1)
+
         topk_lps, candidate_outputs = torch.topk(
             log_probs, k=self._beam_size, dim=2)
 
@@ -107,10 +120,10 @@ class BeamSearch(DecoderSearch):
         output_log_probability = topk_lps.view(1, self.batch_size, -1).gather(
             2, top_score_idxs.unsqueeze(0))
 
-        outputs = candidate_outputs\
+        output = candidate_outputs\
             .view(self.batch_size, self._beam_size ** 2)\
             .gather(1, top_score_idxs).view(-1, 1)
-        next_state["outputs"] = outputs
+        next_state["output"] = output
         next_log_probs = candidate_log_probs\
             .view(self.batch_size, self._beam_size ** 2)\
             .gather(1, top_score_idxs).view(self.batch_size, self.beam_size, 1)
@@ -126,11 +139,11 @@ class BeamSearch(DecoderSearch):
 
         intermediate_state = next_state
         next_state = SearchState(
-            outputs=outputs.t(),
+            output=output.t(),
             output_log_probability=output_log_probability,
             rnn_state=next_rnn_state, 
-            rnn_outputs=intermediate_state["rnn_outputs"],
-            logits=intermediate_state["logits"],
+            rnn_output=intermediate_state["rnn_output"],
+            target_logits=intermediate_state["target_logits"],
             log_probability=intermediate_state["log_probability"],
             sequence_log_probability=next_log_probs,
             scores=next_scores.view(1, self.batch_size, self.beam_size))
@@ -152,7 +165,7 @@ class BeamSearch(DecoderSearch):
 
     def check_termination(self, next_state, active_items):
 
-        next_tokens = next_state["outputs"].view(self.batch_size,
+        next_tokens = next_state["output"].view(self.batch_size,
                                                  self.beam_size)
         is_complete = next_tokens.eq(self.stop_index).cpu()
 
@@ -263,8 +276,8 @@ class BeamSearch(DecoderSearch):
         self._state_history = search_states
         self._state_history["active_items"] = self._completed_lengths.eq(0)
 
-    def _collect_outputs(self):
-        outputs = self._state_history["outputs"].view(
+    def _collect_output(self):
+        outputs = self._state_history["output"].view(
             -1, self.batch_size, self.beam_size)
         mask = self._completed_sequences.eq(-1)
         selector = self._completed_sequences.masked_fill(mask, 0)
@@ -275,8 +288,8 @@ class BeamSearch(DecoderSearch):
     def _collect_output_lengths(self):
         return self._completed_lengths
 
-    def _collect_logits(self):
-        return self._collect_field("logits")
+    def _collect_target_logits(self):
+        return self._collect_field("target_logits")
         selector = self._hidden_selectors
         logits = self._state_history["logits"].view(
             self.steps, self.batch_size, self.beam_size, -1)
@@ -315,8 +328,8 @@ class BeamSearch(DecoderSearch):
         result.data.masked_fill_(mask, 0.)
         return result
 
-    def _collect_rnn_outputs(self):
-        return self._collect_field("rnn_outputs")
+    def _collect_rnn_output(self):
+        return self._collect_field("rnn_output")
 
     def _collect_context_attention(self):
         return self._collect_field("context_attention")

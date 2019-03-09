@@ -38,7 +38,7 @@ def beam_state(decoder, encoder_state, context):
 
 @pytest.fixture(scope="module")
 def eval_data(beam_state, vocab):
-    tokens = beam_state.get_result("outputs").permute(1, 2, 0).view(6,-1)
+    tokens = beam_state.get_result("output").permute(1, 2, 0).view(6,-1)
 
     new_inputs = tokens.new(6, tokens.size(1)).fill_(vocab.pad_index)
     new_inputs[:,0].fill_(vocab.start_index)
@@ -67,15 +67,20 @@ def eval_mask(vocab, eval_data, batch_size, beam_size):
 def forward_state(decoder, eval_data, encoder_state, context, 
                   initialize_decoder):
     encoder_state, context = initialize_decoder(encoder_state, context)    
-    fwd_state = decoder.next_state(
+    fwd_state = decoder(
         encoder_state,
-        inputs=eval_data["target_input_features"],
-        context=context,
-        compute_log_probability=True)
+        eval_data["target_input_features"],
+        context)
+   
+    fwd_state["log_probability"] = torch.log_softmax(
+        fwd_state["target_logits"], dim=2)
+
     return fwd_state
 
 def get_forward_field(field, forward_state, batch_size, beam_size, eval_mask):
     output = forward_state[field]
+    if output is None:
+        return None
     steps = output.size(0)
     output = output.view(steps, batch_size, beam_size, -1).masked_fill(
         eval_mask.permute(2, 0, 1).unsqueeze(-1), 0.)
@@ -83,7 +88,7 @@ def get_forward_field(field, forward_state, batch_size, beam_size, eval_mask):
 
 @pytest.fixture(scope="module")
 def forward_rnn_outputs(forward_state, batch_size, beam_size, eval_mask):
-    return get_forward_field("rnn_outputs", forward_state, batch_size,
+    return get_forward_field("rnn_output", forward_state, batch_size,
                              beam_size, eval_mask)
 
 @pytest.fixture(scope="module")
@@ -96,7 +101,7 @@ def forward_context_attention(forward_state, batch_size, beam_size, eval_mask):
 
 @pytest.fixture(scope="module")
 def forward_logits(forward_state, batch_size, beam_size, eval_mask):
-    return get_forward_field("logits", forward_state, batch_size, beam_size, 
+    return get_forward_field("target_logits", forward_state, batch_size, beam_size, 
                              eval_mask)
 
 @pytest.fixture(scope="module")
@@ -123,11 +128,11 @@ def forward_output_log_probability(forward_log_probability, eval_data,
 
 @pytest.fixture(scope="module")
 def beam_rnn_outputs(beam_state):
-    return beam_state.get_result("rnn_outputs")
+    return beam_state.get_result("rnn_output")
 
 @pytest.fixture(scope="module")
 def beam_logits(beam_state):
-    return beam_state.get_result("logits")
+    return beam_state.get_result("target_logits")
 
 @pytest.fixture(scope="module")
 def beam_context_attention(beam_state, decoder_params):
@@ -201,11 +206,11 @@ def test_rnn_outputs_backprop(backprop_config, named_trainable_parameters,
     nz_grad_params = []
     z_grad_params = []
     for param in named_trainable_parameters(decoder, encoder_state, context):
-        if param[0] in ["context", '_predictor.weight', '_predictor.bias']:
+        if param[0] == "context" or param[0].startswith("_predictor"):
             z_grad_params.append(param)
         else:
             nz_grad_params.append(param)
-    check_gradient(backprop_config, "rnn_outputs", nz_grad_params,
+    check_gradient(backprop_config, "rnn_output", nz_grad_params,
                    zero_gradient_params=z_grad_params)
 
 def test_context_attention_backprop(backprop_config, decoder_params,
@@ -217,7 +222,7 @@ def test_context_attention_backprop(backprop_config, decoder_params,
     nz_grad_params = []
     z_grad_params = []
     for param in named_trainable_parameters(decoder, encoder_state, context):
-        if param[0] in ['_predictor.weight', '_predictor.bias']:
+        if param[0].startswith("_predictor"):
             z_grad_params.append(param)
         else:
             nz_grad_params.append(param)
@@ -226,7 +231,7 @@ def test_context_attention_backprop(backprop_config, decoder_params,
 
 def test_logits_backprop(backprop_config, named_trainable_parameters, decoder, 
                          encoder_state, context, check_gradient):
-    check_gradient(backprop_config, "logits", 
+    check_gradient(backprop_config, "target_logits", 
                    named_trainable_parameters(decoder, encoder_state, context))
 
 def test_log_probability_backprop(backprop_config, named_trainable_parameters,

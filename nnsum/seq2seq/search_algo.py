@@ -216,6 +216,12 @@ class DecoderSearch(object):
         result.data.masked_fill_(mask, 0.)
         return result
 
+    def _collect_rnn_state(self):
+        import warnings
+        warnings.warn("rnn_state is unstable and likely to change and you shouldn't use it.")
+        result = self._state_history["rnn_state"]
+        return result
+
     def _collect_output_log_probability(self):
         outputs = self.get_result("output").unsqueeze(-1)
         mask = outputs.eq(self.pad_index)

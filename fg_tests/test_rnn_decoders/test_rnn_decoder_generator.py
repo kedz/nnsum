@@ -11,12 +11,12 @@ class Dataset(object):
 
     def __init__(self):
         self._data = [
-            {"source": {"tokens": ["A", "B", "C"]},
-             "target": {"tokens": ["C", "B", "A"]}},
-            {"source": {"tokens": ["1", "2", "3"]},
-             "target": {"tokens": ["3", "2", "1"]}},
-            {"source": {"tokens": ["X", "Y", "Z"]},
-             "target": {"tokens": ["Z", "Y", "X"]}},
+            {"source": {"sequence": {"tokens": ["A", "B", "C"]}},
+             "target": {"sequence": {"tokens": ["C", "B", "A"]}}},
+            {"source": {"sequence": {"tokens": ["1", "2", "3"]}},
+             "target": {"sequence": {"tokens": ["3", "2", "1"]}}},
+            {"source": {"sequence": {"tokens": ["X", "Y", "Z"]}},
+             "target": {"sequence": {"tokens": ["Z", "Y", "X"]}}},
         ]
 
     def __getitem__(self, idx):
@@ -119,8 +119,8 @@ def train_model(model, dataset):
         shuffle=True)
 
     optim = torch.optim.SGD(model.parameters(), lr=0.25)
-    loss_func = s2s.CrossEntropyLoss(
-        pad_index=model.decoder.embedding_context.vocab.pad_index)
+    loss_func = s2s.CrossEntropyLoss()
+        #pad_index=model.decoder.embedding_context.vocab.pad_index)
 
     losses = []
     attn_losses = []
@@ -178,25 +178,25 @@ def copy_model(decoder_params, dataset):
 def test_generate_no_copy(no_copy_model, dataset):
     cg = s2s.ConditionalGenerator(no_copy_model)
     for ex in dataset:
-        exp_tgt = " ".join(ex["target"]["tokens"])
-        act_tgt = cg.generate(ex["source"])
+        exp_tgt = " ".join(ex["target"]["sequence"]["tokens"])
+        act_tgt = cg.generate(ex["source"]["sequence"])
         assert exp_tgt == act_tgt
 
 def test_generate_copy_model_no_replace(copy_model, dataset):
     cg = s2s.ConditionalGenerator(copy_model, replace_unknown=False)
     for i, ex in enumerate(dataset):
         r = len(dataset) - i - 1
-        exp_tkns = list(ex["target"]["tokens"])
+        exp_tkns = list(ex["target"]["sequence"]["tokens"])
         exp_tkns[r] = copy_model.decoder.embedding_context.vocab.unknown_token
         exp_tgt = " ".join(exp_tkns)
 
-        act_tgt = cg.generate(ex["source"])
+        act_tgt = cg.generate(ex["source"]["sequence"])
         assert exp_tgt == act_tgt
 
 def test_generate_copy_model_yes_replace(copy_model, dataset):
     cg = s2s.ConditionalGenerator(copy_model)
     for i, ex in enumerate(dataset):
         r = len(dataset) - i - 1
-        exp_tgt = " ".join(ex["target"]["tokens"])
-        act_tgt = cg.generate(ex["source"])
+        exp_tgt = " ".join(ex["target"]["sequence"]["tokens"])
+        act_tgt = cg.generate(ex["source"]["sequence"])
         assert exp_tgt == act_tgt

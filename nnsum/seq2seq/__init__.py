@@ -6,6 +6,7 @@ from .beam_search import BeamSearch
 
 # Modules for seq2seq implementations.
 from .rnn_encoder import RNNEncoder
+from .pass_through_encoder import PassThroughEncoder
 from .rnn_decoder import RNNDecoder
 from .pointer_generator_decoder import PointerGeneratorDecoder
 

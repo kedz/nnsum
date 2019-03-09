@@ -148,8 +148,8 @@ def decoder(decoder_params, vocab, train_data, encoder_state, context,
     optim = torch.optim.SGD(
         trainable_parameters(dec, encoder_state, context), lr=.75)
     losses = []
-    loss_func = s2s.CrossEntropyLoss(
-        pad_index=dec.embedding_context.vocab.pad_index)
+    loss_func = s2s.CrossEntropyLoss()
+        #pad_index=dec.embedding_context.vocab.pad_index)
     for step in range(max_steps):
         optim.zero_grad()
         istate, ictx = initialize_decoder(encoder_state, context)

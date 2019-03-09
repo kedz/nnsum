@@ -17,25 +17,29 @@ class RNNDecoder(nn.Module):
         assert rnn_cell in ["LSTM", "GRU", "RNN"]
         assert hidden_dim > 0
         assert num_layers > 0
-        assert attention in ["none", "dot"]
+        #assert attention in ["none", "dot"]
 
         self._emb_ctx = embedding_context        
         self._rnn = getattr(nn, rnn_cell)(
             embedding_context.output_size, hidden_dim, num_layers=num_layers,
             dropout=dropout if num_layers > 1 else 0.)
 
-        pred_dim = hidden_dim if attention == "none" else 2 * hidden_dim
-        self._predictor = nn.Sequential(
-            nn.Linear(pred_dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, len(self._emb_ctx.vocab)))
-      
-        if attention == "none":
-            self._context_attention = None
+     
+        if not isinstance(attention, str):
+            self._context_attention = attention
+        elif attention == "none":
+            self._context_attention = None 
         else:
             self._context_attention = nnsum.attention.DotAttention(
                 hidden_dim, hidden_dim, temp=attn_temp)
 
+        pred_dim = hidden_dim if attention == "none" else \
+            hidden_dim + self._context_attention.context_size
+        self._predictor = nn.Sequential(
+            nn.Linear(pred_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, len(self._emb_ctx.vocab)))
+ 
     def forward(self, prev_rnn_state, inputs, context):
 
         rnn_input = self.embedding_context(inputs)
@@ -82,6 +86,7 @@ class RNNDecoder(nn.Module):
                 else:
                     _, output = next_state["target_logits"].max(2)
                     next_state["output"] = output
+
 
         return next_state
 
