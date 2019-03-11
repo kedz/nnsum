@@ -1,3 +1,4 @@
 from .cross_entropy import CrossEntropy
+from .sequence_cross_entropy import SequenceCrossEntropy
 from .fg_gate_regularizer import FGGateRegularizer
 from .fg_gate_local_smoother import FGGateLocalSmoother
