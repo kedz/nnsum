@@ -55,7 +55,7 @@ class RNN(Module):
                              dropout=rnn_dropout)
 
 
-    def forward(self, inputs, lengths=None):
+    def forward(self, inputs, lengths=None, state=None):
 
         pack_inputs = lengths is not None and torch.any(lengths.ne(lengths[0]))
 
@@ -64,7 +64,7 @@ class RNN(Module):
                 raise ValueError("Inputs must be sorted by decreasing length.")
             inputs = pack_padded_sequence(inputs, lengths)
 
-        output, state = self._network(inputs)
+        output, state = self._network(inputs, state)
 
         if pack_inputs:
             output, _ = pad_packed_sequence(output, batch_first=True)
@@ -72,7 +72,6 @@ class RNN(Module):
         output = F.dropout(output, p=self.dropout, training=self.training,
                            inplace=True)
 
-        print(state)
         if isinstance(state, (list, tuple)):
             state = [F.dropout(state_i, p=self.dropout, training=self.training,
                                inplace=True)
