@@ -1,1 +1,2 @@
 from .embedding_context import EmbeddingContext
+from .label_embedding_context import LabelEmbeddingContext
