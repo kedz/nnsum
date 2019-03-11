@@ -1,5 +1,6 @@
 from ..module import Module, register_module, hparam_registry
 from nnsum.seq2seq.rnn_state import RNNState
+import torch
 import torch.nn as nn
 
 
@@ -34,42 +35,55 @@ class RNNBridge(Module):
 
     def init_network(self):
         
-        total_nets = self.num_layers
+        in_dims = self.encoder_dims
         if self.bidirectional_encoder:
-            total_nets *= 2
-        if self.lstm_cell:
-            total_nets *= 2
+            in_dims *= 2
+        out_dims = self.decoder_dims
         
-        nets = []
-        for _ in range(total_nets):
-            net = nn.Sequential(
-                nn.Linear(self.encoder_dims, self.decoder_dims),
-                nn.Tanh(),
-                nn.Dropout(p=self.dropout))
-            nets.append(net)
-        self._networks = nn.ModuleList(nets)
-
+        self._output_state_networks = nn.ModuleList([
+            nn.Sequential(nn.Linear(in_dims, out_dims),
+                          nn.Tanh(),
+                          nn.Dropout(p=self.dropout))
+            for _ in range(self.num_layers)])
+        if self.lstm_cell:
+            self._hidden_state_networks = nn.ModuleList([
+                nn.Sequential(nn.Linear(in_dims, out_dims),
+                              nn.Tanh(),
+                              nn.Dropout(p=self.dropout))
+                for _ in range(self.num_layers)])
 
     def forward(self, inputs):
-        print()
-        print(inputs)
-
         if self.lstm_cell:
             return self._lstm_forward(inputs)
         else: 
-            return self._rnn_forward(inputs)
+            return self._state_forward(inputs, self._output_state_networks)
 
     def _lstm_forward(self, inputs):
-        pass
+        if not isinstance(inputs, (list, tuple)) and len(inputs) == 2:   
+            raise Exception("Expecting lstm state!")
+        output_state = self._state_forward(
+            inputs[0], self._output_state_networks)
+        hidden_state = self._state_forward(
+            inputs[1], self._hidden_state_networks) 
+        return RNNState.new_state([output_state, hidden_state])
 
-    def _rnn_forward(self, inputs):
+    def _state_forward(self, inputs, networks):
         if isinstance(inputs, (list, tuple)):
             raise Exception("Expecting rnn or gru state but got lstm state!")
-            
-        split_inputs = inputs.split(1, dim=0)
-        print(len(split_inputs))
-        input()
 
+        batch_size = inputs.size(1)
+            
+        new_states = []
+        if self.bidirectional_encoder:
+            inputs = inputs.permute(1, 0, 2).contiguous().split(2, dim=1)
+        else:
+            inputs = inputs.permute(1, 0, 2).contiguous().split(1, dim=1)
+        
+        for net, inp in zip(networks, inputs):
+            new_states.append(net(inp.view(batch_size, -1)))
+
+        new_state = torch.stack(new_states)
+        return new_state
 
     def initialize_parameters(self):
         for name, param in self.named_parameters():
