@@ -264,7 +264,7 @@ def compute_rouge(model, dataloader, remove_stopwords=True,
         config_text = rouge_papier.util.make_simple_config_text(path_data)
         config_path = manager.create_temp_file(config_text)
         df = rouge_papier.compute_rouge(
-            config_path, max_ngram=2, lcs=False, 
+            stemmer = False, config_path, max_ngram=2, lcs=False, 
             remove_stopwords=remove_stopwords,
             length=summary_length)
         return df[-1:], hist

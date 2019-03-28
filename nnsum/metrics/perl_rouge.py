@@ -47,7 +47,7 @@ class PerlRouge(Metric):
                 self._path_data)
             config_path = manager.create_temp_file(config_text)
             df = rouge_papier.compute_rouge(
-                config_path, max_ngram=2, lcs=False, 
+                config_path, max_ngram=2, lcs=False,
                 remove_stopwords=self.remove_stopwords,
                 length=self.summary_length)
 

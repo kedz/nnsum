@@ -19,7 +19,7 @@ def labels_mle_trainer(model, optimizer, train_dataloader,
                        summary_length=100, remove_stopwords=True,
                        grad_clip=5, gpu=-1, model_path=None, 
                        results_path=None, teacher_forcing=-1,
-                       create_trainer_fn=None):
+                       create_trainer_fn=None, valid_metric="rouge-2"):
 
     if create_trainer_fn is None:
         create_trainer_fn = create_trainer
@@ -157,7 +157,7 @@ def labels_mle_trainer(model, optimizer, train_dataloader,
 
 
     if model_path:
-        checkpoint = create_checkpoint(model_path)
+        checkpoint = create_checkpoint(model_path, metric_name=valid_metric)
         trainer.add_event_handler(
             Events.EPOCH_COMPLETED, checkpoint, {"model": model})
 

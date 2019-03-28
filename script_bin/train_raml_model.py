@@ -59,12 +59,17 @@ def main():
             sentence_limit=args["trainer"]["sentence_limit"])
     else:
         weight = None
-
-    model = nnsum.cli.create_model_from_args(embedding_context, args)
+    
+    if "mrt_model" in args["trainer"]:
+        model = torch.load(args["trainer"]["mrt_model"], map_location=lambda storage, loc: storage)
+        print("pretrained model was loaded: " + args["trainer"]["mrt_model"])
+    else:    
+        model = nnsum.cli.create_model_from_args(embedding_context, args)
     if args["trainer"]["gpu"] > -1:
         print("Placing model on device: {}".format(args["trainer"]["gpu"]))
         model.cuda(args["trainer"]["gpu"])
-    model.initialize_parameters(logger=logging.getLogger())
+    if not "mrt_model" in args["trainer"]:
+        model.initialize_parameters(logger=logging.getLogger())
     optimizer = torch.optim.Adam(model.parameters(), lr=.0001)
 
     nnsum.trainer.labels_raml_trainer(
@@ -75,7 +80,8 @@ def main():
         gpu=args["trainer"]["gpu"],
         teacher_forcing=args["trainer"]["teacher_forcing"],
         model_path=args["trainer"]["model"],
-        results_path=args["trainer"]["results"])
+        results_path=args["trainer"]["results"],
+        valid_metric=args["trainer"]["valid_metric"])
 
 if __name__ == "__main__":
     main()

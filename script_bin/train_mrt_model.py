@@ -3,8 +3,10 @@ import random
 
 import nnsum
 import logging
-logging.getLogger().setLevel(logging.INFO)
+from rouge_score import RougeScorer
+from ref_loader import *
 
+logging.getLogger().setLevel(logging.INFO)
 
 def main():
 
@@ -29,13 +31,15 @@ def main():
     print("Loading training data.")
     if args["trainer"]["shuffle_sents"]:
         print("Shuffling sentences!")
-    train_data = nnsum.data.SummarizationDataset(
+    train_data = nnsum.data.SampleCacheDataset(
         embedding_context.vocab,
         args["trainer"]["train_inputs"],
         targets_dir=args["trainer"]["train_labels"],
         sentence_limit=args["trainer"]["sentence_limit"],
+        num_samples=args["trainer"]["raml_samples"],
+        temperature=args["trainer"]["raml_temp"],
         shuffle_sents=args["trainer"]["shuffle_sents"])
-    train_loader = nnsum.data.SummarizationDataLoader(
+    train_loader = nnsum.data.SampleCacheDataLoader(
         train_data, batch_size=args["trainer"]["batch_size"],
         num_workers=args["trainer"]["loader_workers"])
 
@@ -58,15 +62,24 @@ def main():
     else:
         weight = None
 
-    model = nnsum.cli.create_model_from_args(embedding_context, args)
+    model = torch.load(args["trainer"]["mrt_model"], map_location=lambda storage, loc: storage)
     if args["trainer"]["gpu"] > -1:
         print("Placing model on device: {}".format(args["trainer"]["gpu"]))
         model.cuda(args["trainer"]["gpu"])
-    model.initialize_parameters(logger=logging.getLogger())
     optimizer = torch.optim.Adam(model.parameters(), lr=.0001)
 
-    nnsum.trainer.labels_mle_trainer(
-        model, optimizer, train_loader, val_loader,
+    # mrt stuff
+    stopwords = set([word.strip().lower() for word in open(
+                      args["trainer"]["stopwords"]).readlines()]) if args["trainer"]["stopwords"] else set()
+    scorer = RougeScorer(stopwords=stopwords, word_limit=args["trainer"]["summary_length"])
+    
+    ids2refs = get_ids2refs(args["trainer"]["train_refs"])
+    refs_dict = get_refs_dict(ids2refs, stopwords, word_limit=args["trainer"]["summary_length"])
+    
+    nnsum.trainer.labels_mrt_trainer(
+        model, optimizer, train_loader, val_loader, 
+        scorer, refs_dict, alpha=args["trainer"]["mrt_alpha"], 
+        num_samples=args["trainer"]["mrt_samples"],
         pos_weight=weight, max_epochs=args["trainer"]["epochs"],
         summary_length=args["trainer"]["summary_length"],
         remove_stopwords=args["trainer"]["remove_stopwords"],

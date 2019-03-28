@@ -10,7 +10,8 @@ def labels_raml_trainer(model, optimizer, train_loader,
                        summary_length=100, remove_stopwords=True,
                        grad_clip=5, gpu=-1, model_path=None, 
                        results_path=None, teacher_forcing=-1,
-                       create_trainer_fn=None):
+                       create_trainer_fn=None,
+                       valid_metric="rouge-2"):
 
     labels_mle_trainer(model, optimizer, train_loader, validation_loader,
                        max_epochs=max_epochs, pos_weight=pos_weight,
@@ -19,7 +20,8 @@ def labels_raml_trainer(model, optimizer, train_loader,
                        gpu=gpu, model_path=model_path,
                        results_path=results_path,
                        teacher_forcing=teacher_forcing,
-                       create_trainer_fn=create_trainer)
+                       create_trainer_fn=create_trainer,
+                       valid_metric=valid_metric)
 
 def create_trainer(model, optimizer, pos_weight=None, grad_clip=5, gpu=-1):
 

@@ -123,13 +123,18 @@ def training_argparser():
     train_parser.add_argument(
         "--valid-refs", type=pathlib.Path, required=True,
         help="Path to directory of validation human reference summaries.")
-   
+    train_parser.add_argument(
+        "--train-refs", type=str, required=False, default="",
+        help="Path to directory of training human reference summaries. Needed for some traning procedures like mrt.")
+    train_parser.add_argument(
+        "--valid-metric", type=str, required=False, default="rouge-2") 
     train_parser.add_argument("--seed", default=48929234, type=int)
     train_parser.add_argument("--epochs", type=int, default=50)
     train_parser.add_argument("--batch-size", default=32, type=int)
     train_parser.add_argument("--gpu", default=-1, type=int)
     train_parser.add_argument("--teacher-forcing", default=25, type=int)
     train_parser.add_argument("--sentence-limit", default=50, type=int)
+    train_parser.add_argument("--stopwords", default="", type=str)
     train_parser.add_argument(
         "--weighted", action="store_true", default=False,
         help="Upweight positive labels to make them proportional to the " \
@@ -137,6 +142,9 @@ def training_argparser():
     train_parser.add_argument("--loader-workers", type=int, default=8)
     train_parser.add_argument("--raml-samples", type=int, default=25)
     train_parser.add_argument("--raml-temp", type=float, default=.05)
+    train_parser.add_argument("--mrt-alpha", type=float, default=0.05)
+    train_parser.add_argument("--mrt-samples", type=int, default=100)
+    train_parser.add_argument("--mrt-model", type=str, required=True)
     train_parser.add_argument("--summary-length", type=int, default=100)
     train_parser.add_argument(
         "--remove-stopwords", action="store_true", default=False)
