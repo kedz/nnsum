@@ -14,6 +14,7 @@ class GreedySearch(DecoderSearch):
         
         # Get next state from the decoder.
         next_state = self.decoder.next_state(prev_state, self.context, 
+                                             compute_log_probability=True,
                                              compute_output=True)
 
         # Mask outputs if we have already completed that batch item.

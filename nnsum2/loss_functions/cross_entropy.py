@@ -24,6 +24,11 @@ class CrossEntropy(Module):
     def target_field(self):
         pass
 
+    @hparams(default=None, required=False)
+    def label_name(self):
+        pass
+
+
     def init_network(self):
         self.reset()
         self._weights = None
@@ -47,6 +52,8 @@ class CrossEntropy(Module):
     def _logits_forward(self, forward_state, batch):
         target_logits = forward_state[self.logits_field]
         targets = batch[self.target_field]
+        if self.label_name is not None:
+            targets = targets[self.label_name]
 
         num_el = targets.size(0)
         avg_xent = F.cross_entropy(target_logits, targets, 
@@ -59,6 +66,8 @@ class CrossEntropy(Module):
 
         target_log_probs = forward_state[self.log_probs_field]
         targets = batch[self.target_field]
+        if self.label_name is not None:
+            targets = targets[self.label_name]
 
         num_el = targets.size(0)
         avg_xent = F.nll_loss(target_log_probs, targets, weight=self._weights)

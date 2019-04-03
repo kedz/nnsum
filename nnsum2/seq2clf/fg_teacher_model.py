@@ -22,7 +22,11 @@ class FGTeacherModel(Module):
         pass
 
     @hparams(default=5)
-    def filter_width(self):
+    def gate_filter_width(self):
+        pass
+
+    @hparams(default=5)
+    def classifier_filter_width(self):
         pass
 
     @hparams(default=0.0)
@@ -33,18 +37,19 @@ class FGTeacherModel(Module):
 
         if "N/A" in self.label_vocab:
             self._na_index = self.label_vocab["N/A"]
-            self._na_layer = nn.Conv2d(1, 1, (self.filter_width, 1))
+            self._na_layer = nn.Conv2d(1, 1, (self.gate_filter_width, 1))
         else:
             self._na_index = None
 
         self._lbl_layer1 = nn.Conv2d(
-            1, self.input_dims, (self.filter_width, self.input_dims),
-            padding=(self.filter_width // 2, 0))
+            1, self.input_dims, 
+            (self.classifier_filter_width, self.input_dims),
+            padding=(self.classifier_filter_width // 2, 0))
         self._lbl_layer2 = nn.Linear(self.input_dims, len(self.label_vocab))
 
         self._gate_layer1 = nn.Conv2d(1, self.input_dims, 
-            (self.filter_width, self.input_dims),
-            padding=(self.filter_width // 2, 0))
+            (self.gate_filter_width, self.input_dims),
+            padding=(self.gate_filter_width // 2, 0))
         self._gate_layer2 = nn.Linear(self.input_dims, 1)
 
     def gate_network(self, embeddings):
@@ -114,6 +119,9 @@ class FGTeacherModel(Module):
 
         return {"target_log_probability": target_log_probs,
                 "gates": gate_probs.squeeze(2)}
+
+    def predict(self, inputs):
+        return self.forward(inputs)["target_log_probability"].argmax(1)
 
     def initialize_parameters(self):
         for name, param in self.named_parameters():

@@ -1,0 +1,4 @@
+
+
+class AttentionEntropy(object):
+    pass

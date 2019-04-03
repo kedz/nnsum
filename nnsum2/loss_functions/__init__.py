@@ -2,3 +2,9 @@ from .cross_entropy import CrossEntropy
 from .sequence_cross_entropy import SequenceCrossEntropy
 from .fg_gate_regularizer import FGGateRegularizer
 from .fg_gate_local_smoother import FGGateLocalSmoother
+from .local_teacher_error import LocalTeacherError
+from .fg_meta_gate_div import FGMetaGateDiv
+from .attention_coverage import AttentionCoverage
+from .attention_continuity import AttentionContinuity
+from .attention_entropy import AttentionEntropy
+from .attention_teacher_alignment import AttentionTeacherAlignment

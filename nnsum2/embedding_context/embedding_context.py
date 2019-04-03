@@ -139,3 +139,6 @@ class EmbeddingContext(Module):
             return [self.convert_index_tensor(subten, drop_pad=drop_pad)
                     for subten in tensor]
 
+    def set_dropout(self, dropout):
+        self._input_dropout = dropout
+        self._embedding_dropout = dropout

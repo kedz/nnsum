@@ -28,6 +28,10 @@ class FGGateRegularizer(Module):
     def label_vocab(self):
         pass
 
+    @hparams(default=None, required=False)
+    def label_name(self):
+        pass
+
     def reset(self):
         self._total_loss = 0
         self._total_inputs = 0
@@ -52,8 +56,12 @@ class FGGateRegularizer(Module):
         target_activation.fill_(self.active_target)
 
         if self._has_na:        
+            targets = batch[self.target_field]
+            if self.label_name is not None:
+                targets = targets[self.label_name]
+
             target_activation = target_activation.masked_fill(
-                batch[self.target_field].eq(self._na_index), 
+                targets.eq(self._na_index), 
                 self.inactive_target)
 
         loss_el = (target_activation - total_activation) ** 2

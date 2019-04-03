@@ -10,9 +10,13 @@ class ReduceLROnPlateau(Parameterized):
     hparams = HParams()
 
     @hparams(default='min')
-    def mode(self):
+    def metric_mode(self):
         pass
     
+    @hparams()
+    def metric_selector(self):
+        pass
+
     @hparams(default=0.1)
     def factor(self):
         pass
@@ -53,7 +57,7 @@ class ReduceLROnPlateau(Parameterized):
     def optimizer(self, new_optimizer):
         self._optimizer = new_optimizer
         self._lr_sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self._optimizer, mode=self.mode, factor=self.factor, 
+            self._optimizer, mode=self.metric_mode, factor=self.factor, 
             patience=self.patience, verbose=self.verbose, 
             threshold=self.threshold, threshold_mode=self.threshold_mode,
             cooldown=self.cooldown, min_lr=self.min_lr, eps=self.eps)
@@ -62,7 +66,7 @@ class ReduceLROnPlateau(Parameterized):
         self._optimizer = None
         self._lr_sched = None
 
-    def step(self, value):
+    def step(self, results):
         if self._lr_sched is None:
             raise Exception("No optimizer is set!")
-        self._lr_sched.step(value)
+        self._lr_sched.step(eval(self.metric_selector)(results))

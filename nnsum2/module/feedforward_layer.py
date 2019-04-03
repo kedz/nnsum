@@ -41,3 +41,6 @@ class FeedForwardLayer(Module):
                 nn.init.constant_(param, 0)    
             else:
                 nn.init.normal_(param)           
+
+    def set_dropout(self, dropout):
+        self._dropout = dropout

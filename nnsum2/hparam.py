@@ -7,10 +7,10 @@ class hparam_registry(object):
         self._hparams = OrderedDict()
         self._defaults = {}
 
-    def __call__(self, default=None):
+    def __call__(self, default=None, required=True):
         def wrapper(func):
             self._hparams[func.__name__] = func
-            if default is not None:
+            if not required or default is not None:
                 self._defaults[func.__name__] = default
             return property(func)
         return wrapper

@@ -26,6 +26,10 @@ class ClassificationMetrics(Parameterized):
     def target_field(self):
         pass
 
+    @hparams(default=None, required=False)
+    def target_name(self):
+        pass
+
     @hparams()
     def label_vocab(self):
         pass
@@ -57,12 +61,19 @@ class ClassificationMetrics(Parameterized):
     def _logits_forward(self, forward_state, batch):
         self._pred_labels.extend(
             forward_state[self.logits_field].max(1)[1].tolist())
-        self._true_labels.extend(batch[self.target_field].tolist())
+        targets = batch[self.target_field]
+        if self.target_name is not None:
+            targets = targets[self.target_name]
+        self._true_labels.extend(targets.tolist())
 
     def _log_probs_forward(self, forward_state, batch):
+
         self._pred_labels.extend(
             forward_state[self.log_probs_field].max(1)[1].tolist())
-        self._true_labels.extend(batch[self.target_field].tolist())
+        targets = batch[self.target_field]
+        if self.target_name is not None:
+            targets = targets[self.target_name]
+        self._true_labels.extend(targets.tolist())
 
     def compute(self):
         labels = [label for label in self.label_vocab]

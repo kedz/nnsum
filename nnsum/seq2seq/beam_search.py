@@ -55,9 +55,9 @@ class BeamSearch(DecoderSearch):
         
         nl, bh_sz, state_dims = encoder_state.size()
         bm_sz = self.beam_size
-
         
-        output = self.decoder.start_inputs(bh_sz * bm_sz).t()
+        output = self.decoder.start_inputs(bh_sz * bm_sz, 
+                                           device=encoder_state.device).t()
         if self._start_input is not None:
             import warnings
             warnings.warn("Using start input is experimental and will change.")
@@ -77,20 +77,28 @@ class BeamSearch(DecoderSearch):
         if context is None:
             return None, None
 
-        if "source_mask" in context:
-            print("source!! AHH!")
-            exit()
         bh_sz, ctx_len, ctx_dims = context["encoder_output"].size()
         bm_sz = self.beam_size
         init_context = context["encoder_output"].unsqueeze(1)\
             .repeat(1, bm_sz, 1, 1)\
             .view(bh_sz * bm_sz, ctx_len, ctx_dims)
-        if context_mask is not None:
-            init_mask = context_mask.unsqueeze(1).repeat(1, bm_sz, 1, 1)\
-                .view(bh_sz * bm_sz, ctx_len, ctx_dims)
-        else:
-            init_mask = None
-        return {"encoder_output": init_context}, init_mask
+
+        beam_context = {"encoder_output": init_context}
+
+        if "source_mask" in context:
+            init_mask = context["source_mask"].unsqueeze(1)\
+                .repeat(1, bm_sz, 1)\
+                .view(bh_sz * bm_sz, ctx_len)
+            beam_context["source_mask"] = init_mask
+
+        if context.get("controls", None) is not None:
+            beam_ctrl = {}
+            for ctrl, ctrl_data in context["controls"].items():
+                beam_ctrl[ctrl] = ctrl_data.view(-1, 1).repeat(1, bm_sz)\
+                    .view(bh_sz * bm_sz)
+            beam_context["controls"] = beam_ctrl
+
+        return beam_context, None
 
     # TODO Make sure this interface is general enough for lm or 
     # arbitrary model based rescoring ##, history, next_tokens):
@@ -136,7 +144,7 @@ class BeamSearch(DecoderSearch):
             
         else:
             next_rnn_state = next_state["rnn_state"][:, next_rnn_indxs]
-
+        
         intermediate_state = next_state
         next_state = SearchState(
             output=output.t(),
@@ -150,6 +158,10 @@ class BeamSearch(DecoderSearch):
 
         if "context_attention" in intermediate_state:
             next_state["context_attention"] = intermediate_state["context_attention"]
+        if intermediate_state.get("context_attention_state", None) is not None:
+            
+            next_state["context_attention_state"] = intermediate_state[
+                "context_attention_state"][next_rnn_indxs]
 
         if self.steps == 1:
             self._beam_history = self._beam_indices.view(
@@ -186,7 +198,32 @@ class BeamSearch(DecoderSearch):
                 active_items[i] = 0
         return active_items
 
-    def _add_incomplete_to_beam(self):
+    def _add_incomplete_to_beam(self, final_search_states, active_items):
+
+        for batch in range(self._batch_size):
+            num_complete = len(self._completed_sequences[batch])
+            num_remaining = self._beam_size - num_complete
+            if num_remaining == 0:
+                continue
+            start_index = 0
+            scores = final_search_states["scores"]
+            logprobs = final_search_states["sequence_log_probability"]
+
+            idx = -1
+            while num_complete < self._beam_size:
+                idx += 1
+
+                # Ignore items that we finished in this step
+                if logprobs[batch, idx].eq(float("-inf")):
+                    continue
+                self._completed_sequences[batch].append(
+                    self._beam_history[:,batch,idx])
+                self._completed_lengths[batch, num_complete] = self.steps
+                self._completed_scores[batch, num_complete] = \
+                    scores[0, batch, idx]
+                num_complete += 1
+
+        return 
         history = self._history
         lps = self._log_probs.view(-1)
         cur_step = self._current_step
@@ -204,6 +241,32 @@ class BeamSearch(DecoderSearch):
                     self._completed_scores[batch].append(scores[idx])
                     num_compl += 1
                 beam += 1
+
+
+
+    def _collect_search_states(self, active_items):
+
+        if self.return_incomplete and torch.any(active_items):
+            self._add_incomplete_to_beam(self._state_history[-1], active_items)
+
+        max_len = self._completed_lengths.max().item()
+        max_beam = max([len(x) for x in self._completed_sequences])
+        seqs = self._completed_lengths.new(
+            self.batch_size, max_beam, max_len).fill_(-1)
+        for i, batch in enumerate(self._completed_sequences):
+            for j, cand in enumerate(batch):
+                seqs[i,j,:self._completed_lengths[i,j]].copy_(cand)
+        self._completed_sequences = seqs.permute(2, 0, 1)
+        self._hidden_selectors = F.pad(
+            self._completed_sequences[:-1], (0, 0, 0, 0, 1, 0),
+            'constant', 0)
+
+        search_states = self._state_history[0]
+        for state in self._state_history[1:]:
+            search_states.append(state)
+        self._state_history = search_states
+        self._state_history["active_items"] = self._completed_lengths.eq(0)
+
 
     def _collect_beam(self):
         max_len = self._completed_lengths.max().item()
@@ -242,43 +305,33 @@ class BeamSearch(DecoderSearch):
         sorted_scores, indices = torch.sort(self._completed_scores, dim=1,
                                             descending=True)
 
+        indices = indices.cpu()
         seq_len, bh_sz, bm_sz = self._completed_sequences.size()
         
         selector = indices.view(1, bh_sz, bm_sz).repeat(seq_len, 1, 1)
+        #if self._completed_sequences.device.type != "cpu":
+        #    selector = selector.cuda(self._completed_sequences.device)
+
         self._completed_sequences = self._completed_sequences.gather(
             2, selector)
+        if self._completed_scores.device.type != "cpu":
+            self._completed_sequences = self._completed_sequences.cuda(
+                self._completed_scores.device)
+        
         self._hidden_selectors = F.pad(
             self._completed_sequences[:-1], (0, 0, 0, 0, 1, 0),
             'constant', 0)
 
-        self._completed_lengths = self._completed_lengths.gather(1, indices)
+        self._completed_lengths = self._completed_lengths.gather(
+            1, indices)
 
         self._completed_scores = sorted_scores
         self._is_sorted = True
 
-    def _collect_search_states(self, active_items):
-
-        max_len = self._completed_lengths.max().item()
-        max_beam = max([len(x) for x in self._completed_sequences])
-        seqs = self._completed_lengths.new(
-            self.batch_size, max_beam, max_len).fill_(-1)
-        for i, batch in enumerate(self._completed_sequences):
-            for j, cand in enumerate(batch):
-                seqs[i,j,:self._completed_lengths[i,j]].copy_(cand)
-        self._completed_sequences = seqs.permute(2, 0, 1)
-        self._hidden_selectors = F.pad(
-            self._completed_sequences[:-1], (0, 0, 0, 0, 1, 0),
-            'constant', 0)
-
-        search_states = self._state_history[0]
-        for state in self._state_history[1:]:
-            search_states.append(state)
-        self._state_history = search_states
-        self._state_history["active_items"] = self._completed_lengths.eq(0)
-
     def _collect_output(self):
         outputs = self._state_history["output"].view(
             -1, self.batch_size, self.beam_size)
+
         mask = self._completed_sequences.eq(-1)
         selector = self._completed_sequences.masked_fill(mask, 0)
         results = outputs.gather(2, selector)

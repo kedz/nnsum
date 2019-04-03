@@ -37,13 +37,13 @@ class TrainingLoop(Parameterized):
     def metrics(self):
         pass
 
-    @hparams()
-    def metric_selector(self):
-        pass
+#    @hparams()
+#    def metric_selector(self):
+#        pass
 
-    @hparams()
-    def metric_mode(self):
-        pass
+#    @hparams()
+#    def metric_mode(self):
+#        pass
 
     @hparams()
     def optimizer(self):
@@ -127,9 +127,9 @@ class TrainingLoop(Parameterized):
                     "validation": valid_losses_metrics,
                 }
 
-                summary_metric = eval(self.metric_selector)(epoch_result)
-                self.lr_scheduler.step(summary_metric)
-                print("SUMMARY_METRIC =", summary_metric)
+                #summary_metric = eval(self.metric_selector)(epoch_result)
+                self.lr_scheduler.step(epoch_result)
+                #print("SUMMARY_METRIC =", summary_metric)
 
                 print(json.dumps(epoch_result), file=results_fp, flush=True)
                 ckpt_path = ckpt_dir / "{}.ckpt.{}.pth".format(
@@ -153,6 +153,7 @@ class TrainingLoop(Parameterized):
                 metric["module"](forward_state, batch)
 
     def train_epoch(self):
+        self.model.train()
         
         batches = self.training_minibatches
         
@@ -194,6 +195,7 @@ class TrainingLoop(Parameterized):
         return {"loss_functions": loss_func_results, "metrics": metric_results}
 
     def valid_epoch(self):
+        self.model.eval()
         
         batches = self.validation_minibatches
 
@@ -227,5 +229,6 @@ class TrainingLoop(Parameterized):
             if metric.get("display_validation", False) and \
                     metric.get("validation", True):
                 metric["module"].pretty_print()
+            print()
         
         return {"loss_functions": loss_func_results, "metrics": metric_results}

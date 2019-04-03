@@ -36,31 +36,141 @@ class Seq2SeqBatches(Parameterized):
     def target_vocabs(self):
         pass
 
+    @hparams(default=None, required=False)
+    def control_vocabs(self):
+        pass
+
     @hparams(default=-1)
     def device(self):
+        pass
+
+    @hparams(default=True)
+    def sort(self):
+        pass
+
+    @hparams(default=False)
+    def multireference(self):
+        pass
+
+    @hparams(default=None, required=False)
+    def copy_sequence(self):
         pass
 
     @device.setter
     def device(self, device):
         self._device = device
 
-    def _src_tgt_collate_fn(self, batch):
+    def _sort_batch(self, batch):
+        for label in self.source_vocabs.keys():
+            lengths = [len(example["source"]["sequence"][label])
+                       for example in batch]
+            I = list(range(len(lengths)))
+            I.sort(key=lambda x: lengths[x], reverse=True)
+            return [batch[i] for i in I]
 
+    def _src_tgt_collate_fn(self, batch):
+        if self.sort:
+            batch = self._sort_batch(batch)
         source_items = [item["source"]["sequence"] for item in batch]
         data = batch_source(source_items, self.source_vocabs)
+        if self.copy_sequence is not None:
+            start_token = self.source_vocabs[self.copy_sequence].start_token
+            data["copy_sequence"] = [[start_token] + item[self.copy_sequence] 
+                                     for item in source_items]
 
         target_items = [item["target"]["sequence"] for item in batch]
         data.update(batch_target(target_items, self.target_vocabs))
 
+        if "reference_string" in batch[0]["target"]:
+            tgt_ref_strs = [[item["target"]["reference_string"]]
+                            for item in batch]
+            data["target_reference_strings"] = tgt_ref_strs
+
+        if len(self.control_vocabs) > 0:
+            ctrl_data = {}
+            for ctrl, ctrl_vocab in self.control_vocabs.items():
+                ctrls = torch.LongTensor(
+                    [ctrl_vocab[item["source"]["controls"][ctrl]]
+                     for item in batch])
+                ctrl_data[ctrl] = ctrls
+            data["controls"] = ctrl_data
+            
+        return data
+
+    def _src_tgt_multiref_fn(self, batch):
+        if self.sort:
+            batch = self._sort_batch(batch)
+
+        source_items = [item["source"]["sequence"] for item in batch]
+        data = batch_source(source_items, self.source_vocabs)
+        if self.copy_sequence is not None:
+            start_token = self.source_vocabs[self.copy_sequence].start_token
+            data["copy_sequence"] = [[start_token] + items[self.copy_sequence] 
+                                     for item in source_items]
+
+        num_refs = [len(ex["target"]["references"]) for ex in batch]
+        max_refs = max(num_refs)
+
+        target_items = []
+        feature, target_vocab = list(self.target_vocabs.items())[0] 
+
+        for ex in batch:
+            seqs = []
+            for ref in ex["target"]["references"]:
+                seqs.append(ref["sequence"])
+            if len(seqs) < max_refs:
+                diff = max_refs - len(seqs)
+                seqs.extend([{feature: [target_vocab.pad_token]}] * diff)
+            target_items.extend(seqs)
+
+        target_data = batch_target(target_items, self.target_vocabs)
+        tgt_out_ftrs = target_data["target_output_features"][feature].view(
+            len(batch), max_refs, -1)
+        tgt_in_ftrs = target_data["target_input_features"][feature].view(
+            len(batch), max_refs, -1)
+        tgt_lens = target_data["target_lengths"].view(len(batch), max_refs)
+
+        for i, nref in enumerate(num_refs):
+            tgt_out_ftrs.data[i,nref:].fill_(target_vocab.pad_index)
+            tgt_in_ftrs.data[i,nref:].fill_(target_vocab.pad_index)
+            tgt_lens.data[i,nref:].fill_(target_vocab.pad_index)
+
+        target_data["num_references"] = torch.LongTensor(num_refs)
+        target_data["max_references"] = max_refs
+
+        data.update(target_data) 
+ 
+        if batch[0]["target"]["references"][0]["reference_string"]:
+            data["target_reference_strings"] = [
+                [ref["reference_string"] for ref in ex["target"]["references"]]
+                for ex in batch
+            ]
+
+        if len(self.control_vocabs) > 0:
+            ctrl_data = {}
+            for ctrl, ctrl_vocab in self.control_vocabs.items():
+                ctrls = torch.LongTensor(
+                    [ctrl_vocab[item["source"]["controls"][ctrl]]
+                     for item in batch])
+                ctrl_data[ctrl] = ctrls
+            data["controls"] = ctrl_data
+      
         return data
 
     def init_object(self):
+        if self.control_vocabs is None:
+            self._control_vocabs = {}
+
+        if self.multireference:
+            collate_fn = self._src_tgt_multiref_fn
+        else:
+            collate_fn = self._src_tgt_collate_fn
         self._dataloader = DataLoader(
             self.dataset, 
             batch_size=self.batch_size,
             shuffle=self.shuffle,
             num_workers=self.num_workers,
-            collate_fn=self._src_tgt_collate_fn)
+            collate_fn=collate_fn)
 
     def __iter__(self):
         for batch in self._dataloader:
@@ -79,8 +189,8 @@ class Seq2SeqBatches(Parameterized):
                      "source_lengths": new_lengths}
 
         if "source_mask" in batch:
-            new_mask = batch["source_mask"].cuda(self.device)
-            new_batch["source_mask"] = new_mask
+            source_mask = batch["source_mask"].cuda(self.device)
+            new_batch["source_mask"] = source_mask
 
         if "target_input_features" in batch:
             tgt_in_feats = {}
@@ -95,6 +205,24 @@ class Seq2SeqBatches(Parameterized):
             new_batch["target_output_features"] = tgt_out_feats
             new_batch["target_lengths"] = tgt_lens
             new_batch["target_mask"] = tgt_mask
+
+        if "target_reference_strings" in batch:
+            tgt_ref_strs = batch["target_reference_strings"]
+            new_batch["target_reference_strings"] = tgt_ref_strs
+
+        if "num_references" in batch:
+            num_refs = batch["num_references"].cuda(self.device)
+            new_batch["num_references"] = num_refs
+            new_batch["max_references"] = batch["max_references"]
+
+        if "copy_sequence" in batch:
+            new_batch["copy_sequence"] = batch["copy_sequence"]
+
+        if "controls" in batch:
+            new_batch["controls"] = {
+                ctrl: tensor.cuda(self.device)
+                for ctrl, tensor in batch["controls"].items()
+            }
 
         return new_batch
 

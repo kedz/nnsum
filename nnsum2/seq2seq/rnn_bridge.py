@@ -33,8 +33,14 @@ class RNNBridge(Module):
     def decoder_dims(self):
         pass
 
+    @hparams(default=False)
+    def pass_through(self):
+        pass
+
     def init_network(self):
-        
+        if self.pass_through:
+            return
+
         in_dims = self.encoder_dims
         if self.bidirectional_encoder:
             in_dims *= 2
@@ -53,7 +59,9 @@ class RNNBridge(Module):
                 for _ in range(self.num_layers)])
 
     def forward(self, inputs):
-        if self.lstm_cell:
+        if self.pass_through:
+            return RNNState.new_state(inputs)
+        elif self.lstm_cell:
             return self._lstm_forward(inputs)
         else: 
             return self._state_forward(inputs, self._output_state_networks)
@@ -94,3 +102,6 @@ class RNNBridge(Module):
                 nn.init.constant_(param, 0)    
             else:
                 nn.init.normal_(param)           
+
+    def set_dropout(self, dropout):
+        self._dropout = dropout

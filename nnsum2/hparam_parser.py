@@ -46,6 +46,7 @@ class HParamParser(object):
         if uri is None:
             raise Exception(
                 "uri is not set for resource at: {}".format(str(getter)))
+        device = args.get("__device__", -1)
         
         if not uri.startswith("file://"):
             raise Exception("Non-file uris not implemented: {}".format(uri))
@@ -54,7 +55,13 @@ class HParamParser(object):
             raise Exception("Non .pth files not supported: {}".format(uri))
 
         if uri not in self._uri_object_cache:
-            obj = torch.load(uri[7:])
+            if device == -1:
+                obj = torch.load(
+                    uri[7:], map_location=lambda storage, loc: storage)
+            else:
+                obj = torch.load(
+                    uri[7:], map_location="cuda:{}".format(device))
+
             self._uri_object_cache[uri] = obj
             
         self._uri_getter_cache[uri].append(getter)

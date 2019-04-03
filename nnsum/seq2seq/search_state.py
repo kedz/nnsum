@@ -56,10 +56,12 @@ class SearchState(object):
                 raise Exception()
         return self
 
-
+    def get(self, key, default=None):
+        if key in self:
+            return self[key]
+        else:
+            return default
     
-
-
     @property
     def predictor_logits(self):
         return self._predictor_logits

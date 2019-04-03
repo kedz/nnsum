@@ -1,1 +1,4 @@
 from .training_loop import TrainingLoop
+from .multiclass_training_loop import MultiClassTrainingLoop
+from .decoder_model_training_loop import DecoderModelTrainingLoop
+from .fg_decoder_model_training_loop import FGDecoderModelTrainingLoop

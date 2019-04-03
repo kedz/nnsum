@@ -22,7 +22,8 @@ class Parameterized(object):
             elif hp_reg.has_default(hparam):
                 value = hp_reg.defaults[hparam]
             else:
-                raise Exception("No value provided for {}".format(hparam))
+                raise Exception("No value provided for {} for class {}".format(
+                    hparam, self.__class__))
 
             if hp_reg.is_submodule(hparam) and isinstance(value, dict):
                 value = build_module(value)

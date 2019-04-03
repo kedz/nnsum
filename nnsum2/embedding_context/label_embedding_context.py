@@ -60,3 +60,7 @@ class LabelEmbeddingContext(Module):
                 nn.init.constant_(param, 1.)    
             else:
                 nn.init.normal_(param)    
+
+    def set_dropout(self, dropout):
+        if self._adaptor:
+            self._adaptor.set_dropout(dropout)

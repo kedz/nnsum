@@ -50,7 +50,8 @@ class BilinearAttention(nn.Module):
             .view(batch_size, ctx_steps, -1)
 
         scores = context_dot_weights.bmm(perm_query).permute(0, 2, 1) 
-        scores = scores / self.temp
+        if self.temp != 1.:
+            scores = scores / self.temp
 
         if context_mask is not None:
             scores.data.masked_fill_(context_mask.unsqueeze(1), float("-inf"))

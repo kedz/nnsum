@@ -22,9 +22,14 @@ class RNNEncoder(Module):
     def forward(self, features, lengths):
         emb = self.embedding_context(features)
         context, state = self.rnn(emb, lengths=lengths)
-        return context, self.bridge(state)
+        return context.permute(1, 0, 2), self.bridge(state)
 
     def initialize_parameters(self):
         self.rnn.initialize_parameters()
         self.embedding_context.initialize_parameters()
         self.bridge.initialize_parameters()
+
+    def set_dropout(self, dropout):
+        self.embedding_context.set_dropout(dropout)
+        self.rnn.set_dropout(dropout)
+        self.bridge.set_dropout(dropout)

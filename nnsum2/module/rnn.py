@@ -67,10 +67,10 @@ class RNN(Module):
         output, state = self._network(inputs, state)
 
         if pack_inputs:
-            output, _ = pad_packed_sequence(output, batch_first=True)
+            output, _ = pad_packed_sequence(output)
 
         output = F.dropout(output, p=self.dropout, training=self.training,
-                           inplace=True)
+                           inplace=False)
 
         if isinstance(state, (list, tuple)):
             state = [F.dropout(state_i, p=self.dropout, training=self.training,
@@ -92,3 +92,7 @@ class RNN(Module):
                 nn.init.constant_(param, 0)    
             else:
                 nn.init.normal_(param)           
+    
+    def set_dropout(self, dropout):
+        self._network.dropout = dropout
+        self._dropout = dropout
