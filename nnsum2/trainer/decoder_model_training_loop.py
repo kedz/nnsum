@@ -360,5 +360,5 @@ class DecoderModelTrainingLoop(Parameterized):
 
                 self.lr_scheduler.step(epoch_result)
 
-                print(json.dumps(epoch_result), file=results_fp, flush=True)
-                self._checkpoint_model(epoch_result)
+                #print(json.dumps(epoch_result), file=results_fp, flush=True)
+                #self._checkpoint_model(epoch_result)

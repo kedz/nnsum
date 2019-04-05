@@ -1,5 +1,6 @@
 from .cross_entropy import CrossEntropy
 from .sequence_cross_entropy import SequenceCrossEntropy
+from .pointer_generator_cross_entropy import PointerGeneratorCrossEntropy
 from .fg_gate_regularizer import FGGateRegularizer
 from .fg_gate_local_smoother import FGGateLocalSmoother
 from .local_teacher_error import LocalTeacherError

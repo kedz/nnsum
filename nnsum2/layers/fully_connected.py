@@ -2,17 +2,17 @@ import torch.nn as nn
 from ..module import Module, register_module, hparam_registry
 
 
-@register_module("module.feedforward_layer")
-class FeedForwardLayer(Module):
+@register_module("layers.fully_connected")
+class FullyConnected(Module):
     
     hparams = hparam_registry()
 
     @hparams()
-    def input_dims(self):
+    def in_feats(self):
         pass
 
     @hparams()
-    def output_dims(self):
+    def out_feats(self):
         pass
 
     @hparams(default=0.0)
@@ -25,7 +25,7 @@ class FeedForwardLayer(Module):
 
     def init_network(self):
         self._network = nn.Sequential(
-            nn.Linear(self.input_dims, self.output_dims),
+            nn.Linear(self.in_feats, self.out_feats),
             nn.__dict__[self.activation](),
             nn.Dropout(p=self.dropout),)
 

@@ -4,7 +4,9 @@ from .parallel_dataset import ParallelDataset
 
 import torch
 from torch.utils.data import DataLoader
-from nnsum.data.seq2seq_batcher import batch_source, batch_target
+from nnsum.data.seq2seq_batcher import (
+    batch_source, batch_target, batch_pointer_data,
+)
 
 
 @Parameterized.register_object("data.seq2seq_batches")
@@ -56,6 +58,10 @@ class Seq2SeqBatches(Parameterized):
     def copy_sequence(self):
         pass
 
+    @hparams(default=False)
+    def create_extended_vocab(self):
+        pass
+
     @device.setter
     def device(self, device):
         self._device = device
@@ -95,6 +101,13 @@ class Seq2SeqBatches(Parameterized):
                 ctrl_data[ctrl] = ctrls
             data["controls"] = ctrl_data
             
+        if self.create_extended_vocab:
+            data.update(
+                batch_pointer_data(source_items, self.target_vocabs,
+                                   targets=target_items,
+                                   sparse=True))
+                 
+
         return data
 
     def _src_tgt_multiref_fn(self, batch):
@@ -155,6 +168,12 @@ class Seq2SeqBatches(Parameterized):
                 ctrl_data[ctrl] = ctrls
             data["controls"] = ctrl_data
       
+        if self.create_extended_vocab:
+            raise Exception(
+                "Create extended vocab for multiref not implemented.")
+            data.update(
+                batch_pointer_data(source_items, self.target_vocabs))
+
         return data
 
     def init_object(self):
