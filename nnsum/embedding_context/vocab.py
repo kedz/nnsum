@@ -58,6 +58,31 @@ class Vocab(object):
         return Vocab(index2word, word2index, pad=pad, unk=unk, 
                      start=start, stop=stop, counts=counts)
 
+    @staticmethod
+    def from_list(word_list, pad=None, unk=None, 
+                  start=None, stop=None, counts=None):
+
+        if stop is not None and stop not in word_list:
+            word_list = [stop] + word_list
+
+        if start is not None and start not in word_list:
+            word_list = [start] + word_list
+
+        if unk is not None and unk not in word_list:
+            word_list = [unk] + word_list
+        
+        if pad is not None and pad not in word_list:
+            word_list = [pad] + word_list
+
+        word2index = {}
+        index2word = []
+        for word in word_list:
+            if word not in word2index:
+                word2index[word] = len(word2index)
+                index2word.append(word)
+        return Vocab(index2word, word2index, pad=pad, unk=unk, 
+                     start=start, stop=stop, counts=counts)
+
     
 
     def __getitem__(self, word_or_index):
@@ -112,6 +137,10 @@ class Vocab(object):
     @property
     def stop_index(self):
         return self._stop_idx
+
+    @property
+    def counts(self):
+        return self._counts
 
     def enumerate(self):
         return enumerate(self._index2tokens)
