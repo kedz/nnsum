@@ -22,7 +22,9 @@ class EncoderDecoderModel(Module):
 
         context = {"encoder_output": encoder_output,
                    "source_mask": inputs.get("source_mask", None),
-                   "source_vocab_map": inputs.get("source_vocab_map", None),
+                   "source_extended_vocab_map": inputs.get(
+                       "source_extended_vocab_map", None),
+                   "extended_vocab": inputs.get("extended_vocab", None),
                    "controls": inputs.get("controls", None)}
         return context, encoder_state
 

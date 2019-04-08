@@ -1,4 +1,5 @@
 import torch
+from torch_scatter import scatter_add
 import torch.nn.functional as F
 from ..module import Module, register_module, hparam_registry
 from nnsum.seq2seq.search_state import SearchState
@@ -53,35 +54,11 @@ class RNNCopyDecoder(Module):
         # Lookup input feature embeddings.
         return self.input_embedding_context(in_feats)
 
-    def _project_attention(self, attns, vmaps):
-        if isinstance(vmaps, list):
-            return self._project_attention_sparse(attns, vmaps)
-        else:
-            return self._project_attention_dense(attns, vmaps)
-
-    def _project_attention_sparse(self, attns, vmaps):
-        mapped_attns = [] 
-        for attn, vmap in zip(attns.split(1, dim=1), vmaps):
-            #X = attn.squeeze(1).matmul(vmap)
-            #mapped_attn = torch.mm(vmap.t().clone().detach().data, attn.squeeze(1).t()).t()\
-            x = vmap.t().detach()
-            x.requires_grad = False
-            print(type(x))
-            print(vmap)
-            # probs is steps x 1 x ext_vocab_size
-            mapped_attn = x.mm(attn.squeeze(1).t()).t()\
-                .unsqueeze(1)
-            #mapped_attn = vmap.t().matmul(attn.squeeze(1).t()).t().unsqueeze(1)
-            print(mapped_attn.size())
-            mapped_attn.sum().backward()
-            print()
-            input()
-            mapped_attns.append(mapped_attn)
-        mapped_attns = torch.cat(mapped_attns, dim=1)
-        return mapped_attns
-
-    def _project_attention_dense(self, attns, vmaps):
-        return attns.permute(1, 0, 2).bmm(vmaps).permute(1, 0, 2)
+    def _map_attention_to_vocab(self, attention, source_indices, vocab_size):
+        tgt_steps, batch_size, src_size = attention.size()
+        return scatter_add(
+            attention,
+            source_indices.unsqueeze(0).repeat(tgt_steps, 1, 1))
 
     def forward(self, rnn_state, input_features, context, attention_state):
 
@@ -102,9 +79,10 @@ class RNNCopyDecoder(Module):
 
         copy_switch = self.copy_switch(torch.cat([hidden_state, rnn_input], 2))
         gen_switch = (1. - copy_switch)
-
-        copy_prob = self._project_attention(
-            ctx_attn, context["source_vocab_map"])
+        
+        copy_prob = self._map_attention_to_vocab(
+            ctx_attn, context["source_extended_vocab_map"],
+            len(context["extended_vocab"]))
         
         pointer_probability = copy_switch * copy_prob
         generator_probability = gen_switch * gen_prob
@@ -175,7 +153,6 @@ class RNNCopyDecoder(Module):
                     next_state["output"] = output
 
         return next_state
-
                           
     def initialize_parameters(self):
         self.input_embedding_context.initialize_parameters()

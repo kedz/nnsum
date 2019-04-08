@@ -97,12 +97,12 @@ class BeamSearch(DecoderSearch):
                 beam_ctrl[ctrl] = ctrl_data.view(-1, 1).repeat(1, bm_sz)\
                     .view(bh_sz * bm_sz)
             beam_context["controls"] = beam_ctrl
-        if "source_vocab_map" in context:
-            _, xsz, ysz = context["source_vocab_map"].size()
-            svm_beam = context["source_vocab_map"].view(bh_sz, 1, xsz, ysz)\
-                .repeat(1, bm_sz, 1, 1)\
-                .view(bh_sz * bm_sz, xsz, ysz)
-            beam_context["source_vocab_map"] = svm_beam
+        if "source_extended_vocab_map" in context:
+            vmap = context["source_extended_vocab_map"]
+            beam_vmap = vmap.unsqueeze(1).repeat(1, bm_sz, 1).view(
+                bh_sz * bm_sz, -1)
+            beam_context["source_extended_vocab_map"] = beam_vmap
+            beam_context["extended_vocab"] = context["extended_vocab"]
 
         return beam_context, None
 
