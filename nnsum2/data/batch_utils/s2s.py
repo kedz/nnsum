@@ -4,13 +4,20 @@ from nnsum.embedding_context import Vocab
 from .map_tokens import map_tokens
 
 
-def source(batch, vocabs, sequence_field="sequence"):
+def source(batch, vocabs, sequence_field="sequence", max_length=None):
     source_data = []
     for field, vocab in vocabs.items():
         indices = map_tokens([item[sequence_field] for item in batch],
-                             field, vocab, start_token=True)
-        lengths = torch.LongTensor(
-            [len(item[sequence_field][field]) + 1 for item in batch])
+                             field, vocab, start_token=True,
+                             max_length=max_length)
+        lengths = []
+        for item in batch:
+            toks = item[sequence_field][field]
+            if max_length is not None:
+                toks = toks[:max_length]
+            lengths.append(len(toks) + 1)
+
+        lengths = torch.LongTensor(lengths)
         mask = indices.eq(vocab.pad_index)
         source_data.append((field, indices, lengths, mask))
 
@@ -34,13 +41,21 @@ def source(batch, vocabs, sequence_field="sequence"):
             "source_lengths": length_0,
             "source_mask": mask_0}
   
-def target(batch, vocabs, sequence_field="sequence"):
+def target(batch, vocabs, sequence_field="sequence", max_length=None):
     target_data = []
     inputs = [item[sequence_field] for item in batch]
     for field, vocab in vocabs.items():
 
-        in_feats, out_feats = map_input_output_tokens(inputs, field, vocab)
-        lengths = torch.LongTensor([len(item[field]) for item in inputs])
+        in_feats, out_feats = map_input_output_tokens(inputs, field, vocab,
+                                                      max_length=max_length)
+        lengths = []
+        for item in batch:
+            toks = item[sequence_field][field]
+            if max_length is not None:
+                toks = toks[:max_length]
+            lengths.append(len(toks))
+
+        lengths = torch.LongTensor(lengths)
         mask = in_feats.eq(vocab.pad_index)
         target_data.append((field, in_feats, out_feats, lengths, mask))
 
@@ -73,10 +88,14 @@ def target(batch, vocabs, sequence_field="sequence"):
     
     return output
 
-def extend_vocab(inputs, field, vocab, sequence_field="sequence"):
+def extend_vocab(inputs, field, vocab, sequence_field="sequence", 
+                 max_length=None):
     ext_words = OrderedDict()
     for inp in inputs:
-        for token in inp[sequence_field][field]:
+        inp_tokens = inp[sequence_field][field]
+        if max_length is not None:
+            inp_tokens = inp_tokens[:max_length]
+        for token in inp_tokens:
             if token not in vocab:
                 ext_words[token] = True 
 
@@ -90,8 +109,16 @@ def extend_vocab(inputs, field, vocab, sequence_field="sequence"):
                            stop=vocab.stop_token,
                            counts=vocab.counts)
 
-def copy_sequence(inputs, field, start_token, sequence_field="sequence"):
-    return [[start_token] + inp[sequence_field][field] for inp in inputs]
+def copy_sequence(batch, field, start_token, sequence_field="sequence",
+                  max_length=None):
+    data = []
+    for item in batch:
+        inp_tokens = item[sequence_field][field]
+        if max_length is not None:
+            inp_tokens = inp_tokens[:max_length]
+        seq = [start_token] + inp_tokens
+        data.append(seq)
+    return data
 
 def discrete_controls(batch, control_vocabs, control_field="controls"):
     controls = OrderedDict()
@@ -101,16 +128,23 @@ def discrete_controls(batch, control_vocabs, control_field="controls"):
         controls[field] = values
     return controls
 
-def map_input_output_tokens(inputs, field, vocab):
+def map_input_output_tokens(inputs, field, vocab, max_length=None):
 
     batch_size = len(inputs)
-    max_steps = max([len(inp[field]) for inp in inputs]) + 1
+    max_steps = max([len(inp[field]) for inp in inputs]) 
+
+    if max_length is not None:
+        max_steps = min(max_steps, max_length)
+    max_steps += 1
     in_feats = torch.LongTensor(batch_size, max_steps).fill_(vocab.pad_index)
     out_feats = torch.LongTensor(batch_size, max_steps).fill_(vocab.pad_index)
         
     in_feats[:, 0].fill_(vocab.start_index)
     for batch, inp in enumerate(inputs):
-        for step, token in enumerate(inp[field]):
+        inp_tokens = inp[field]
+        if max_length is not None:
+            inp_tokens = inp_tokens[:max_length]
+        for step, token in enumerate(inp_tokens):
             idx = vocab[token]
             in_feats[batch, step + 1] = idx
             out_feats[batch, step] = idx

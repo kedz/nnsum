@@ -63,6 +63,14 @@ class Seq2SeqBatches(Parameterized):
     def create_extended_vocab(self):
         pass
 
+    @hparams(default=None, required=False)
+    def max_source_length(self):
+        pass
+
+    @hparams(default=None, required=False)
+    def max_target_length(self):
+        pass
+
     @device.setter
     def device(self, device):
         self._device = device
@@ -82,25 +90,32 @@ class Seq2SeqBatches(Parameterized):
         sources = [item["source"] for item in batch]
         targets = [item["target"] for item in batch]
 
-        batch_data = batch_utils.s2s.source(sources, self.source_vocabs)
-        batch_data.update(batch_utils.s2s.target(targets, self.target_vocabs))
+        batch_data = batch_utils.s2s.source(sources, self.source_vocabs,
+                                            max_length=self.max_source_length)
+        batch_data.update(
+            batch_utils.s2s.target(targets, self.target_vocabs,
+                                   max_length=self.max_target_length))
 
         if self.copy_field:
             batch_data["copy_sequence"] = batch_utils.s2s.copy_sequence(
                 sources, 
                 self.copy_field,
-                self.source_vocabs[self.copy_field].start_token)
+                self.source_vocabs[self.copy_field].start_token,
+                max_length=self.max_target_length)
 
         if self.create_extended_vocab:
             copy_field = self.copy_field
             extended_vocab = batch_utils.s2s.extend_vocab(
-                sources, copy_field, self.target_vocabs[copy_field])
+                sources, copy_field, self.target_vocabs[copy_field],
+                max_length=self.max_source_length)
             source_extended_vocab_map = batch_utils.map_tokens(
                 [item["sequence"] for item in sources], 
-                copy_field, extended_vocab, start_token=True)
+                copy_field, extended_vocab, start_token=True,
+                max_length=self.max_source_length)
             copy_targets = batch_utils.map_tokens(
                 [item["sequence"] for item in targets], 
-                copy_field, extended_vocab, stop_token=True)
+                copy_field, extended_vocab, stop_token=True,
+                max_length=self.max_target_length)
 
             batch_data["extended_vocab"] = extended_vocab
             batch_data["source_extended_vocab_map"] = source_extended_vocab_map
@@ -293,6 +308,13 @@ class Seq2SeqBatches(Parameterized):
                 ctrl: tensor.cuda(self.device)
                 for ctrl, tensor in batch["controls"].items()
             }
+        if "extended_vocab" in batch:
+            new_batch["extended_vocab"] = batch["extended_vocab"]
+            new_batch["source_extended_vocab_map"] = \
+                batch["source_extended_vocab_map"].cuda(self.device)
+        if "copy_targets" in batch:
+            new_batch["copy_targets"] = \
+                batch["copy_targets"].cuda(self.device)
 
         return new_batch
 
