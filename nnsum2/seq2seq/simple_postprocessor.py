@@ -35,24 +35,24 @@ class SimplePostProcessor(Parameterized):
         if outputs.dim() == 3:
             outputs = outputs[:,:,0]
 
-        extended_vocab = batch.get("extended_vocab", None)
+        vocab = batch.get("extended_vocab", self.vocab)
         outputs = outputs.t().tolist()
         texts = []
         for output in outputs:
-            tokens = []
+            tokens = [vocab[idx] for idx in output if idx != vocab.pad_index]
             
-            for idx in output:
-                if idx < len(self.vocab):
-                    if idx != self.vocab.pad_index:
-                        tokens.append(self.vocab[idx])
-                elif extended_vocab:
-                    ext_idx = idx - len(self.vocab)
-                    if ext_idx < len(extended_vocab):
-                        tokens.append(extended_vocab[ext_idx])
-                    else:
-                        raise Exception("BAD INDEX", idx)
-                else:
-                    raise Exception("BAD INDEX", idx)
+#            for idx in output:
+#                if idx < len(self.vocab):
+#                    if idx != self.vocab.pad_index:
+#                        tokens.append(self.vocab[idx])
+#                elif extended_vocab:
+#                    ext_idx = idx - len(self.vocab)
+#                    if ext_idx < len(extended_vocab):
+#                        tokens.append(extended_vocab[ext_idx])
+#                    else:
+#                        raise Exception("BAD INDEX", idx)
+#                else:
+#                    raise Exception("BAD INDEX", idx)
             
             #[self.vocab[idx] for idx in output 
             #          if idx != self.vocab.pad_index]
