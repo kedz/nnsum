@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from nnsum.data.seq2seq_batcher import (
     batch_source, batch_target, batch_pointer_data,
 )
+from . import batch_utils
 
 
 @Parameterized.register_object("data.seq2seq_batches")
@@ -55,7 +56,7 @@ class Seq2SeqBatches(Parameterized):
         pass
 
     @hparams(default=None, required=False)
-    def copy_sequence(self):
+    def copy_field(self):
         pass
 
     @hparams(default=False)
@@ -77,11 +78,53 @@ class Seq2SeqBatches(Parameterized):
     def _src_tgt_collate_fn(self, batch):
         if self.sort:
             batch = self._sort_batch(batch)
+       
+        sources = [item["source"] for item in batch]
+        targets = [item["target"] for item in batch]
+
+        batch_data = batch_utils.s2s.source(sources, self.source_vocabs)
+        batch_data.update(batch_utils.s2s.target(targets, self.target_vocabs))
+
+        if self.copy_field:
+            batch_data["copy_sequence"] = batch_utils.s2s.copy_sequence(
+                sources, 
+                self.copy_field,
+                self.source_vocabs[self.copy_field].start_token)
+
+        if self.create_extended_vocab:
+            copy_field = self.copy_field
+            extended_vocab = batch_utils.s2s.extend_vocab(
+                sources, copy_field, self.target_vocabs[copy_field])
+            source_extended_vocab_map = batch_utils.map_tokens(
+                [item["sequence"] for item in sources], 
+                copy_field, extended_vocab, start_token=True)
+            copy_targets = batch_utils.map_tokens(
+                [item["sequence"] for item in targets], 
+                copy_field, extended_vocab, stop_token=True)
+
+            batch_data["extended_vocab"] = extended_vocab
+            batch_data["source_extended_vocab_map"] = source_extended_vocab_map
+            batch_data["copy_targets"] = copy_targets
+
+
+        if len(self.control_vocabs) > 0:
+            batch_data["controls"] = batch_utils.s2s.discrete_controls(
+                sources, self.control_vocabs)
+
+        return batch_data
+
+
+
+        input()
+
+
         source_items = [item["source"]["sequence"] for item in batch]
         data = batch_source(source_items, self.source_vocabs)
         if self.copy_sequence is not None:
             start_token = self.source_vocabs[self.copy_sequence].start_token
-            data["copy_sequence"] = [[start_token] + item[self.copy_sequence] 
+            #data["copy_sequence"] = 
+            
+            [[start_token] + item[self.copy_sequence] 
                                      for item in source_items]
 
         target_items = [item["target"]["sequence"] for item in batch]
@@ -102,11 +145,19 @@ class Seq2SeqBatches(Parameterized):
             data["controls"] = ctrl_data
             
         if self.create_extended_vocab:
+            copy_field = self.copy_sequence
+            extended_vocab = batch_utils.s2s.extended_vocab(
+                source_items, copy_field, self.target_vocabs[copy_field])
+            source_extended_vocab_map = batch_utils.map_tokens(
+                source_items, copy_field, extended_vocab, start_token=True)
+
+            data["extended_vocab"] = extended_vocab
+            data["source_extended_vocab_map"] = source_extended_vocab_map
+
             data.update(
                 batch_pointer_data(source_items, self.target_vocabs,
                                    targets=target_items,
                                    sparse=True))
-                 
 
         return data
 
