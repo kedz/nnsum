@@ -9,3 +9,5 @@ from .attention_coverage import AttentionCoverage
 from .attention_continuity import AttentionContinuity
 from .attention_entropy import AttentionEntropy
 from .attention_teacher_alignment import AttentionTeacherAlignment
+
+from .precomputed import Precomputed

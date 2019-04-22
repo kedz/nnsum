@@ -39,25 +39,15 @@ class ROUGE(Parameterized):
             raise RuntimeError("Must have processed at least one batch.")
 
 
-        with rouge_papier.util.TempFileManager() as manager:
-            path_data = []
-            for hyp, refs in zip(self._hypotheses, self._references):
-
-                    #summary = "\n".join(text)
-                hyp_path = manager.create_temp_file(hyp)
-                ref_paths = [manager.create_temp_file(ref)
-                             for ref in refs]
-                path_data.append((hyp_path, ref_paths))
-
-            config_text = rouge_papier.util.make_simple_config_text(path_data)
-            config_path = manager.create_temp_file(config_text)
-            df = rouge_papier.compute_rouge(
-                config_path, max_ngram=2, lcs=True,
-                remove_stopwords=False,
-                length=100)
-        self._cache = df.loc["average"].to_dict()
-
-        return self._cache
+        df = rouge_papier.to_dataframe(self._hypotheses, self._references,
+            ngrams=2)
+        
+        fscore_cols = [x for x in df.columns if x[1] == 'F-Score']
+        
+        d = {lbl[0]: val 
+             for lbl, val in zip(fscore_cols, df[fscore_cols].values.ravel())}
+        self._cache = d
+        return d
 
     def pretty_print(self):
         if self._cache is None:

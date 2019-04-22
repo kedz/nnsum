@@ -2,6 +2,7 @@ import torch.nn as nn
 from ..module import Module, register_module, hparam_registry
 
 from collections import OrderedDict
+import nnsum2.layers
 
 
 @register_module("label_embedding_context")
@@ -25,7 +26,7 @@ class LabelEmbeddingContext(Module):
     def vocab(self):
         pass
 
-    @hparams()
+    @hparams(default=nnsum2.layers.Identity())
     def adaptor(self):
         pass
 

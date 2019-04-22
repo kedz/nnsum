@@ -28,7 +28,7 @@ class SequenceCrossEntropy(Module):
     def target_length_field(self):
         pass
 
-    @hparams()
+    @hparams(default=None, required=False)
     def target_vocab_name(self):
         pass
 
@@ -58,27 +58,38 @@ class SequenceCrossEntropy(Module):
     def _logits_forward(self, forward_state, batch):
         
         target_logits = forward_state[self.logits_field]
-        targets = batch[self.target_field][self.target_vocab_name].t()
+        targets = batch[self.target_field]
+        if self.target_vocab_name is not None:
+            targets = targets[self.target_vocab_name]
+        targets = targets.t()
 
         assert len(self.vocab) == target_logits.size(2)
-        target_logits_flat = target_logits.view(-1, len(self.vocab))
+        target_logits_flat = target_logits.contiguous() \
+            .view(-1, len(self.vocab))
         targets_flat = targets.contiguous().view(-1)
 
-        avg_xent = F.cross_entropy(target_logits_flat, targets_flat,
-                                   ignore_index=self.vocab.pad_index) 
+        sum_xent = F.cross_entropy(target_logits_flat, targets_flat,
+                                   ignore_index=self.vocab.pad_index,
+                                   reduction="sum") 
+
         num_el = batch[self.target_length_field].sum().item()
+        avg_xent = sum_xent / num_el
         
-        self._total_loss += (avg_xent.item() * num_el)
+        self._total_loss += sum_xent.item() # (avg_xent.item() * num_el)
         self._total_inputs += num_el
         return avg_xent
 
     def _log_probs_forward(self, forward_state, batch):
 
         target_log_probs = forward_state[self.log_probs_field]
-        targets = batch[self.target_field][self.target_vocab_name].t()
+        targets = batch[self.target_field]
+        if self.target_vocab_name is not None:
+            targets = targets[self.target_vocab_name]
+        targets = targets.t()
 
         assert len(self.vocab) == target_log_probs.size(2)
-        target_log_probs_flat = target_log_probs.view(-1, len(self.vocab))
+        target_log_probs_flat = target_log_probs.contiguous() \
+            .view(-1, len(self.vocab))
         targets_flat = targets.contiguous().view(-1)
 
         avg_xent = F.nll_loss(target_log_probs, targets_flat,

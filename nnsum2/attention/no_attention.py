@@ -10,6 +10,10 @@ class NoAttention(Module):
     def compute_composition(self):
         pass
 
+    @property
+    def output_dims(self):
+        return 0
+
     def forward(self, context, query, context_mask=None, attention_state=None):
         if self.compute_composition:
             return None, None, None

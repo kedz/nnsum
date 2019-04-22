@@ -19,15 +19,20 @@ class FullyConnected(Module):
     def dropout(self):
         pass
 
+    @hparams(default=True)
+    def bias(self):
+        pass
+
     @hparams(default="Tanh")
     def activation(self):
         pass
 
     def init_network(self):
-        self._network = nn.Sequential(
-            nn.Linear(self.in_feats, self.out_feats),
-            nn.__dict__[self.activation](),
-            nn.Dropout(p=self.dropout),)
+        layers = [nn.Linear(self.in_feats, self.out_feats, bias=self.bias)]
+        if self.activation.lower() != "none":
+            layers.append(nn.__dict__[self.activation]())
+        layers.append(nn.Dropout(p=self.dropout))
+        self._network = nn.Sequential(*layers)
 
     def forward(self, inputs):
         return self._network(inputs)
@@ -44,4 +49,4 @@ class FullyConnected(Module):
 
     def set_dropout(self, dropout):
         self._dropout = dropout
-        self._network[2].p = dropout
+        self._network[-1].p = dropout

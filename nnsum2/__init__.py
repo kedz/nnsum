@@ -12,6 +12,7 @@ from . import embedding_context
 from . import attention
 from . import seq2clf
 from . import seq2seq
+from . import fg
 from . import loss_functions
 from . import metrics
 from . import optim

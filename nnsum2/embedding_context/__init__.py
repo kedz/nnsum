@@ -1,3 +1,5 @@
 from .embedding_context import EmbeddingContext
 from .label_embedding_context import LabelEmbeddingContext
 from .multi_embedding_context import MultiEmbeddingContext
+from .binarizing_feature import BinarizingFeature
+from .bins_feature import BinsFeature

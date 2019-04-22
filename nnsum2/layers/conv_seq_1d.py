@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from ..module import Module, register_module, hparam_registry
 
 
@@ -62,11 +63,25 @@ class ConvSeq1D(Module):
     def kernel_bias(self):
         return self._network.bias
 
+    @hparams(default=None, required=False)
+    def activation(self):
+        pass
+
+    @hparams(default=0.0, required=False)
+    def dropout(self):
+        pass
+
     def init_network(self):
         kernel_size = (self.kernel_width, self.input_features) 
         padding = (self.padding, 0)
         self._network = nn.Conv2d(1, self.output_features, kernel_size,
                                   padding=padding, bias=self.bias)
+
+        if self.activation:
+            self._act_func = nn.__dict__[self.activation]()
+        else:
+            self._act_func = None
+
 
     def initialize_parameters(self):
         k = self.kernel_width
@@ -121,6 +136,11 @@ class ConvSeq1D(Module):
         inputs = inputs.unsqueeze(1)
         outputs = self._network(inputs).squeeze(3).permute(0, 2, 1)
 
+        if self._act_func:
+            outputs = self._act_func(outputs)
+
+        outputs = F.dropout(outputs, p=self.dropout, training=self.training)
+
         if inputs_mask is not None:
             outputs_mask = self._compute_outputs_mask(inputs_mask)
             outputs = outputs.masked_fill(
@@ -130,4 +150,5 @@ class ConvSeq1D(Module):
 
         return outputs, outputs_mask
 
-
+    def set_dropout(self, dropout):
+        self._dropout = dropout

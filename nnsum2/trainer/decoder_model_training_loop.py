@@ -86,6 +86,10 @@ class DecoderModelTrainingLoop(Parameterized):
     def epoch(self):
         return self._epoch
 
+    @hparams(default=False)
+    def warm_start(self):
+        pass
+
     def init_object(self):
         self._epoch = 0
 
@@ -102,7 +106,11 @@ class DecoderModelTrainingLoop(Parameterized):
         )       
 
         self._set_seed() 
-        self.model.initialize_parameters()
+        if not self.warm_start:
+            print("Initializing parameters...")
+            self.model.initialize_parameters()
+        else:
+            print("Warm Start: skipping initialization")
         if self.device > -1:
             self._model = self.model.cuda(self.device)
             self.training_minibatches.device = self.device
@@ -203,13 +211,16 @@ class DecoderModelTrainingLoop(Parameterized):
             lines.append("HYP: {}\n".format(hyp))
         print("\n".join(lines), file=fp)
 
-    def _apply_metrics(self, batch, search_states, postprocessed_texts,
+    def _apply_metrics(self, batch, forward_state, 
+                       search_states, postprocessed_texts,
                        mode):
         # default is to postprocess during validation and not during training.
         default = True if mode == "validation" else False
         for metric in self.metrics.values():
             if metric.get(mode, default):
-                if metric["input_source"] == "search":
+                if metric["input_source"] == "forward_state":
+                    metric_input = forward_state
+                elif metric["input_source"] == "search":
                     metric_input = search_states[metric['input']]
                 elif metric["input_source"] == "postprocessor":
                     metric_input = postprocessed_texts[metric['input']]
@@ -270,13 +281,15 @@ class DecoderModelTrainingLoop(Parameterized):
             postprocessed_texts = self._apply_postprocessors(
                 batch, search_states, "training", output_pointers)
 
+            # Complete the forward pass of the decoder
+            forward_state = self.model(batch, encoded_inputs=encoded_inputs)
+
             # Optionally apply evaluation metrics.
             self._apply_metrics(
-                batch, search_states, postprocessed_texts, "training")
+                batch, forward_state, search_states, postprocessed_texts, 
+                "training")
 
-            # Complete the forward pass of the decoder and compute the 
-            # loss function. 
-            forward_state = self.model(batch, encoded_inputs=encoded_inputs)
+            # compute the loss function. 
             loss = self._apply_loss_functions(forward_state, batch)
             total_loss += loss.item()
             
@@ -321,13 +334,16 @@ class DecoderModelTrainingLoop(Parameterized):
             postprocessed_texts = self._apply_postprocessors(
                 batch, search_states, "validation", output_pointers)
 
+            # Compute forward pass
+            forward_state = self.model(batch, encoded_inputs=encoded_inputs)
+
             # Optionally apply evaluation metrics.
             self._apply_metrics(
-                batch, search_states, postprocessed_texts, "validation")
+                batch, forward_state, search_states, postprocessed_texts,
+                "validation")
 
             # Complete the forward pass of the decoder and compute the 
             # loss function. 
-            forward_state = self.model(batch, encoded_inputs=encoded_inputs)
             loss = self._apply_loss_functions(forward_state, batch)
             total_loss += loss.item()
             

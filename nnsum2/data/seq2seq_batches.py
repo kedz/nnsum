@@ -75,6 +75,10 @@ class Seq2SeqBatches(Parameterized):
     def device(self, device):
         self._device = device
 
+    @hparams(default=None, required=False)
+    def cloze_vocab_name(self):
+        pass
+
     def _sort_batch(self, batch):
         for label in self.source_vocabs.keys():
             lengths = [len(example["source"]["sequence"][label])
@@ -121,10 +125,16 @@ class Seq2SeqBatches(Parameterized):
             batch_data["source_extended_vocab_map"] = source_extended_vocab_map
             batch_data["copy_targets"] = copy_targets
 
-
         if len(self.control_vocabs) > 0:
             batch_data["controls"] = batch_utils.s2s.discrete_controls(
                 sources, self.control_vocabs)
+
+        if self.cloze_vocab_name is not None:
+            batch_data.update(
+                batch_utils.fg.cloze_batch(
+                    sources,
+                    self.source_vocabs[self.cloze_vocab_name],
+                    self.cloze_vocab_name))
 
         return batch_data
 
@@ -315,6 +325,14 @@ class Seq2SeqBatches(Parameterized):
         if "copy_targets" in batch:
             new_batch["copy_targets"] = \
                 batch["copy_targets"].cuda(self.device)
+        if batch.get("cloze_indices", None) is not None:
+            new_batch["cloze_indices"] = \
+                batch["cloze_indices"].cuda(self.device)
+            new_batch["cloze_targets"] = \
+                batch["cloze_targets"].cuda(self.device)
+            new_batch["cloze_lengths"] = \
+                batch["cloze_lengths"].cuda(self.device)
+
 
         return new_batch
 
