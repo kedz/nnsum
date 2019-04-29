@@ -90,6 +90,10 @@ class DecoderModelTrainingLoop(Parameterized):
     def warm_start(self):
         pass
 
+    @hparams(default=0)
+    def warm_start_epoch(self):
+        pass
+
     def init_object(self):
         self._epoch = 0
 
@@ -111,6 +115,9 @@ class DecoderModelTrainingLoop(Parameterized):
             self.model.initialize_parameters()
         else:
             print("Warm Start: skipping initialization")
+            print("Starting at epoch: {}".format(self.warm_start_epoch))
+            self._epoch = self.warm_start_epoch
+
         if self.device > -1:
             self._model = self.model.cuda(self.device)
             self.training_minibatches.device = self.device
