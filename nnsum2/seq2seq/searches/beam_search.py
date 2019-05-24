@@ -429,3 +429,7 @@ class BeamSearch(object):
     @property
     def sort_by_score(self):
         return self._sort_by_score
+
+    @property
+    def context(self):
+        return self._context

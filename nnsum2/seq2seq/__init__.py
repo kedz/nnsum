@@ -1,5 +1,6 @@
 from .rnn_encoder import RNNEncoder
 from .rnn_bridge import RNNBridge
+from .rnn_chasm import RNNChasm
 
 from . import decoders
 from .search_wrapper_v2 import SearchWrapper2

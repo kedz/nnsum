@@ -13,7 +13,7 @@ class RoundTripEncoderDecoderExposureModel(Module):
     def round_trip_model(self):
         pass
 
-    @hparams(default=1000)
+    @hparams(default=15)
     def max_steps(self):
         pass
 

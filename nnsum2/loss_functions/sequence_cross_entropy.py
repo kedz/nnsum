@@ -58,6 +58,10 @@ class SequenceCrossEntropy(Module):
     def _logits_forward(self, forward_state, batch):
         
         target_logits = forward_state[self.logits_field]
+        if target_logits is None:
+            from warnings import warn
+            warn("No logits! Skipping...")
+            return 0
         targets = batch[self.target_field]
         if self.target_vocab_name is not None:
             targets = targets[self.target_vocab_name]

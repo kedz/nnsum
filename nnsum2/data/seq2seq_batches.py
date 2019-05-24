@@ -79,6 +79,10 @@ class Seq2SeqBatches(Parameterized):
     def cloze_vocab_name(self):
         pass
 
+    @hparams(default=None, required=False)
+    def cloze_field(self):
+        pass
+
     def _sort_batch(self, batch):
         for label in self.source_vocabs.keys():
             lengths = [len(example["source"]["sequence"][label])
@@ -131,10 +135,11 @@ class Seq2SeqBatches(Parameterized):
 
         if self.cloze_vocab_name is not None:
             batch_data.update(
-                batch_utils.fg.cloze_batch(
+                batch_utils.fg.cloze_batch2(
                     sources,
                     self.source_vocabs[self.cloze_vocab_name],
-                    self.cloze_vocab_name))
+                    self.cloze_vocab_name,
+                    self.cloze_field))
 
         return batch_data
 

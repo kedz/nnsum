@@ -89,6 +89,37 @@ def cloze_batch(sources, vocab, field):
             "cloze_targets": cloze_targets,
             "cloze_lengths": cloze_lengths}
 
+def cloze_batch2(sources, vocab, source_field, cloze_field):
+
+    cloze_indices = []
+    cloze_targets = []
+    cloze_lengths = []
+    for item in sources:
+        # redactable indices start at 1 because we never redact the start token
+        redactable_indices = [
+            idx for idx, redact in enumerate(item["sequence"][cloze_field], 1)
+            if redact
+        ]
+        tokens = [vocab.start_token] + item["sequence"][source_field]
+        target_tokens = [tokens[idx] for idx in redactable_indices]
+        cloze_lengths.append(len(target_tokens))
+        cloze_targets.append(
+            torch.LongTensor([vocab[tok] for tok in target_tokens]))
+
+        cloze_indices.append(torch.LongTensor(redactable_indices))
+    cloze_indices = ntorch.pad_and_stack(cloze_indices)
+    cloze_targets = ntorch.pad_and_stack(cloze_targets)
+    cloze_lengths = torch.LongTensor(cloze_lengths)
+    assert cloze_targets.size() == cloze_indices.size()
+
+    return {"cloze_indices": cloze_indices, 
+            "cloze_targets": cloze_targets,
+            "cloze_lengths": cloze_lengths}
+
+
+
+
+
 def cloze_batch_to_gpu(batch, device):
     batch["cloze_indices"] = batch["cloze_indices"].cuda(device)
     return batch

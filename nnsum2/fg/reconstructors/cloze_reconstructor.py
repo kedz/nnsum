@@ -26,7 +26,7 @@ class Cloze(Module):
         pass
 
     def forward(self, source, cloze_indices, targets, embeddings, 
-                targets_mask=None):
+                targets_mask=None, return_attention=False):
         
         source_features = self.source_preprocessor(source)
         hidden_dim = source_features.size(2) // 2
@@ -55,8 +55,14 @@ class Cloze(Module):
         output = self.postprocessor(attn_out)
 
         n, bs, h = output.size()
+       
+        if output.numel() == 0:
+            return None
+        
         logits = torch.mm(output.view(-1, h), embeddings.t()).view(n, bs, -1)
 
+        if return_attention:
+            return logits, attn
         return logits
 
     def initialize_parameters(self):
