@@ -47,7 +47,7 @@ class SummarizationDataset(Dataset):
 
         ref_paths = defaultdict(list)
         for path in references_dir.glob("*"):
-            ref_id = path.stem.rsplit(".")[0]
+            ref_id = path.stem.rsplit(".", 1)[0]
             ref_paths[ref_id].append(path)
 
         all_ref_paths = []
