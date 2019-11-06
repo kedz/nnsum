@@ -154,7 +154,9 @@ def labels_mle_trainer(model, optimizer, train_dataloader,
                 json.dumps({"training": trainer.state.training_history,
                             "validation": trainer.state.validation_history}))
 
-
+    @trainer.on(Events.COMPLETED)
+    def save_model(trainer):
+        torch.save(model, model_path)
 
     if model_path:
         checkpoint = create_checkpoint(model_path)
@@ -185,7 +187,8 @@ def create_trainer(model, optimizer, pos_weight=None, grad_clip=5, gpu=-1):
         avg_bce = bce / float(total_sentences_batch)
         avg_bce.backward()
         for param in model.parameters():
-            param.grad.data.clamp_(-grad_clip, grad_clip)
+            if hasattr(param.grad, 'data'):
+                param.grad.data.clamp_(-grad_clip, grad_clip)
         optimizer.step()
 
         return {"total_xent": bce, 
