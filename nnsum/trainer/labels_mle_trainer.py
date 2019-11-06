@@ -185,7 +185,8 @@ def create_trainer(model, optimizer, pos_weight=None, grad_clip=5, gpu=-1):
         avg_bce = bce / float(total_sentences_batch)
         avg_bce.backward()
         for param in model.parameters():
-            param.grad.data.clamp_(-grad_clip, grad_clip)
+            if hasattr(param.grad, 'data'):
+                param.grad.data.clamp_(-grad_clip, grad_clip)
         optimizer.step()
 
         return {"total_xent": bce, 
