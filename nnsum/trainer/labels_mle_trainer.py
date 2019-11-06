@@ -154,7 +154,9 @@ def labels_mle_trainer(model, optimizer, train_dataloader,
                 json.dumps({"training": trainer.state.training_history,
                             "validation": trainer.state.validation_history}))
 
-
+    @trainer.on(Events.COMPLETED)
+    def save_model(trainer):
+        torch.save(model, model_path)
 
     if model_path:
         checkpoint = create_checkpoint(model_path)
